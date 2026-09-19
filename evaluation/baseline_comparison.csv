@@ -1,0 +1,4 @@
+representation,feature_count,validation_accuracy,validation_macro_f1,normal_recall,warning_recall,critical_recall,critical_f1
+raw,32,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000
+baseline_normalized,32,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000
+augmented,64,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000

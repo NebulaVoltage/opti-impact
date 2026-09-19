@@ -1,0 +1,4 @@
+{"timestamp": 23.990000000000002, "previous_state": "NORMAL", "new_state": "WARNING", "reason": "persistent_model_prediction", "consecutive_windows": 3, "window_id": 19}
+{"timestamp": 44.99, "previous_state": "WARNING", "new_state": "CRITICAL", "reason": "persistent_model_prediction", "consecutive_windows": 3, "window_id": 40}
+{"timestamp": 66.99, "previous_state": "CRITICAL", "new_state": "WARNING", "reason": "persistent_model_prediction", "consecutive_windows": 3, "window_id": 62}
+{"timestamp": 85.99, "previous_state": "WARNING", "new_state": "NORMAL", "reason": "persistent_model_prediction", "consecutive_windows": 3, "window_id": 81}

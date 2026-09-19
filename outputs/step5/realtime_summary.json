@@ -1,0 +1,10 @@
+{
+  "number_of_windows": 96,
+  "number_of_state_transitions": 4,
+  "total_runtime": 1.193727600009879,
+  "mean_latency": 11.401582291910017,
+  "median_latency": 11.083900004450697,
+  "p95_latency": 15.410325006087078,
+  "max_latency": 30.235999991418794,
+  "final_state": "NORMAL"
+}

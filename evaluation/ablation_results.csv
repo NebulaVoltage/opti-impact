@@ -1,0 +1,5 @@
+feature_group,feature_count,validation_accuracy,validation_macro_f1,normal_recall,warning_recall,critical_recall,critical_f1
+group_a_vibration_only,17,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000
+group_b_optical_only,12,0.9978,0.9978,1.0000,0.9933,1.0000,1.0000
+group_c_vibration_and_optical,29,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000
+group_d_full_multimodal,32,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000

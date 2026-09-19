@@ -1,0 +1,43 @@
+{
+  "model_version": "step4_v1",
+  "model_type": "logistic_regression",
+  "validation_metrics": {
+    "accuracy": 1.0,
+    "macro_precision": 1.0,
+    "macro_recall": 1.0,
+    "macro_f1": 1.0,
+    "weighted_f1": 1.0,
+    "normal_recall": 1.0,
+    "warning_recall": 1.0,
+    "critical_recall": 1.0,
+    "critical_f1": 1.0
+  },
+  "test_metrics": {
+    "accuracy": 1.0,
+    "macro_precision": 1.0,
+    "macro_recall": 1.0,
+    "macro_f1": 1.0,
+    "weighted_precision": 1.0,
+    "weighted_recall": 1.0,
+    "weighted_f1": 1.0,
+    "normal_precision": 1.0,
+    "normal_recall": 1.0,
+    "normal_f1": 1.0,
+    "warning_precision": 1.0,
+    "warning_recall": 1.0,
+    "warning_f1": 1.0,
+    "critical_precision": 1.0,
+    "critical_recall": 1.0,
+    "critical_f1": 1.0
+  },
+  "software_versions": {
+    "python": "3.11.9",
+    "numpy": "2.4.3",
+    "scipy": "1.17.1",
+    "pandas": "3.0.1",
+    "scikit_learn": "1.9.0",
+    "joblib": "1.5.3",
+    "xgboost": "3.2.0"
+  },
+  "disclaimer": "Trained exclusively on physics-inspired synthetic structural-response data. Demonstrates software-pipeline feasibility only and does not establish real-world bridge damage-detection accuracy, structural safety thresholds, or deployment readiness."
+}
