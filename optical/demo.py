@@ -44,6 +44,7 @@ def run_demo(
     duration: Optional[float] = None,
     headless: bool = False,
     session_name: Optional[str] = None,
+    debug: bool = False,
 ) -> None:
     """Run live optical structural motion sensing demonstration."""
     print("=" * 64)
@@ -62,6 +63,12 @@ def run_demo(
 
     print(f"Connected: {cam_mgr.actual_width}x{cam_mgr.actual_height} resolution")
 
+    # Camera auto-exposure settling: read and discard initial 10 warmup frames
+    print("Settling camera auto-exposure and gain...")
+    for _ in range(10):
+        cam_mgr.read_frame()
+        time.sleep(0.02)
+
     # Default specimen ROI if not provided: central 70% of frame
     if roi is None:
         rx = int(cam_mgr.actual_width * 0.15)
@@ -73,7 +80,7 @@ def run_demo(
     print(f"Configured Specimen ROI: x={roi[0]}, y={roi[1]}, w={roi[2]}, h={roi[3]}")
 
     tracker = OpticalFeatureTracker(roi=roi)
-    motion_estimator = OpticalMotionEstimator()
+    motion_estimator = OpticalMotionEstimator(frame_width=cam_mgr.actual_width, frame_height=cam_mgr.actual_height)
     visualizer = OpticalVisualizer()
     calibration = PlanarCalibration()
     recorder = OpticalSessionRecorder(session_name=session_name) if record else None
@@ -85,11 +92,13 @@ def run_demo(
     print("\nTracking active. Controls:")
     print("  [q] Quit session")
     print("  [r] Re-detect features / reset baseline")
+    print("  [d] Toggle diagnostic debug mode")
     print("  [s] Save frame snapshot")
     print("-" * 64)
 
     t_start = time.perf_counter()
     latencies = []
+    active_debug = debug
 
     try:
         while True:
@@ -126,6 +135,7 @@ def run_demo(
                 roi=roi,
                 calibration=calibration,
                 show_plot=True,
+                debug_mode=active_debug,
             )
 
             # 5. Display GUI if not headless
@@ -138,6 +148,10 @@ def run_demo(
                     tracker.reset()
                     motion_estimator.reset()
                     print("\n[Tracker Reset] Baseline re-centered and features re-detected.")
+                elif key == ord("d"):
+                    active_debug = not active_debug
+                    mode_str = "ENABLED" if active_debug else "DISABLED"
+                    print(f"\n[Debug Mode] Diagnostic overlay {mode_str}.")
                 elif key == ord("s"):
                     snap_path = Path("outputs/optical") / f"snapshot_{int(time.time())}.png"
                     cv2.imwrite(str(snap_path), annotated)
@@ -178,6 +192,7 @@ def main():
     parser.add_argument("--duration", type=float, default=None, help="Session duration in seconds before auto-exit.")
     parser.add_argument("--headless", action="store_true", help="Run without graphical window (for batch/testing).")
     parser.add_argument("--session-name", type=str, default=None, help="Custom filename prefix for recording.")
+    parser.add_argument("--debug", action="store_true", help="Enable diagnostic overlay mode with inliers/rejections.")
 
     args = parser.parse_args()
 
@@ -199,6 +214,7 @@ def main():
         duration=args.duration,
         headless=args.headless,
         session_name=args.session_name,
+        debug=args.debug,
     )
 
 

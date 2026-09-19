@@ -28,6 +28,9 @@ class OpticalSessionRecorder:
         "valid_feature_count",
         "tracking_quality",
         "measurement_valid",
+        "validity_reason",
+        "confidence",
+        "inlier_feature_count",
         "camera_fps",
     ]
 
@@ -79,6 +82,9 @@ class OpticalSessionRecorder:
             "valid_feature_count": int(kinematics.valid_feature_count),
             "tracking_quality": str(kinematics.tracking_quality),
             "measurement_valid": bool(kinematics.measurement_valid),
+            "validity_reason": str(getattr(kinematics, "validity_reason", "VALID")),
+            "confidence": float(getattr(kinematics, "confidence", 1.0)),
+            "inlier_feature_count": int(getattr(kinematics, "inlier_feature_count", kinematics.valid_feature_count)),
             "camera_fps": float(camera_fps),
         }
         self._records.append(row)

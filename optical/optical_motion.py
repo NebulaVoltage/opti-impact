@@ -39,6 +39,10 @@ class OpticalKinematics:
     tracking_quality: str
     measurement_valid: bool = True
     validity_reason: str = "VALID"
+    confidence: float = 1.0
+    mad_x_pixels: float = 0.0
+    mad_y_pixels: float = 0.0
+    inlier_feature_count: int = 0
 
 
 class OpticalMotionEstimator:
@@ -74,6 +78,10 @@ class OpticalMotionEstimator:
         self.cum_x: float = 0.0
         self.cum_y: float = 0.0
 
+        # Protected state: last confirmed valid displacement to prevent anomaly locking
+        self._last_valid_x: Optional[float] = None
+        self._last_valid_y: Optional[float] = None
+
         # Rolling time-series histories
         self._timestamps: Deque[float] = deque(maxlen=history_len)
         self._cum_x_hist: Deque[float] = deque(maxlen=history_len)
@@ -84,6 +92,13 @@ class OpticalMotionEstimator:
         self._valid_flags: Deque[bool] = deque(maxlen=history_len)
 
         self.frame_counter: int = 0
+
+    def set_frame_dimensions(self, width: int, height: int) -> None:
+        """Dynamically synchronize frame boundaries with active camera resolution."""
+        if width > 0:
+            self.frame_width = int(width)
+        if height > 0:
+            self.frame_height = int(height)
 
     def update(
         self,
@@ -103,18 +118,31 @@ class OpticalMotionEstimator:
         """
         self.frame_counter += 1
 
-        # 1. Robust median displacement aggregation relative to reference
-        if tracked.valid_count > 0 and len(tracked.displacements) > 0:
+        # 1. Robust MAD-filtered inlier displacement aggregation relative to reference
+        inlier_mask = getattr(tracked, "inlier_mask", None)
+        if inlier_mask is not None and np.sum(inlier_mask) >= 3 and len(tracked.displacements) > 0:
+            inlier_disps = tracked.displacements[inlier_mask]
+            median_dx = float(np.median(inlier_disps[:, 0]))
+            median_dy = float(np.median(inlier_disps[:, 1]))
+            inlier_count = int(np.sum(inlier_mask))
+        elif tracked.valid_count > 0 and len(tracked.displacements) > 0:
             median_dx = float(np.median(tracked.displacements[:, 0]))
             median_dy = float(np.median(tracked.displacements[:, 1]))
+            inlier_count = tracked.valid_count
         else:
             median_dx = 0.0
             median_dy = 0.0
+            inlier_count = 0
 
         # 2. Camera Global Motion Rejection (Background Subtraction)
         if bg_tracked is not None and bg_tracked.valid_count > 0 and len(bg_tracked.displacements) > 0:
-            bg_dx = float(np.median(bg_tracked.displacements[:, 0]))
-            bg_dy = float(np.median(bg_tracked.displacements[:, 1]))
+            bg_inliers = getattr(bg_tracked, "inlier_mask", None)
+            if bg_inliers is not None and np.sum(bg_inliers) >= 3:
+                bg_dx = float(np.median(bg_tracked.displacements[bg_inliers, 0]))
+                bg_dy = float(np.median(bg_tracked.displacements[bg_inliers, 1]))
+            else:
+                bg_dx = float(np.median(bg_tracked.displacements[:, 0]))
+                bg_dy = float(np.median(bg_tracked.displacements[:, 1]))
             median_dx -= bg_dx
             median_dy -= bg_dy
 
@@ -132,12 +160,20 @@ class OpticalMotionEstimator:
         elif abs(structural_dx) > self.frame_width or abs(structural_dy) > self.frame_height:
             measurement_valid = False
             validity_reason = "EXCEEDS_FRAME_BOUNDS"
-        elif len(self._cum_x_hist) > 0 and not tracked.redetected:
-            step_dx = abs(structural_dx - self._cum_x_hist[-1])
-            step_dy = abs(structural_dy - self._cum_y_hist[-1])
+        elif getattr(tracked, "confidence", 1.0) < 0.15:
+            measurement_valid = False
+            validity_reason = "LOW_CONFIDENCE"
+        elif self._last_valid_x is not None and not tracked.redetected:
+            step_dx = abs(structural_dx - self._last_valid_x)
+            step_dy = abs(structural_dy - self._last_valid_y)
             if step_dx > self.max_step_disp or step_dy > self.max_step_disp:
                 measurement_valid = False
                 validity_reason = "EXCESSIVE_STEP_DISPLACEMENT"
+
+        # Update last verified valid baseline if current measurement passed all checks
+        if measurement_valid:
+            self._last_valid_x = structural_dx
+            self._last_valid_y = structural_dy
 
         # Position-based structural displacement (relative to reference, NOT unbounded accumulator)
         self.cum_x = structural_dx
@@ -155,10 +191,12 @@ class OpticalMotionEstimator:
         vx = 0.0
         vy = 0.0
         if measurement_valid and len(self._timestamps) >= 2 and not tracked.redetected:
-            dt = self._timestamps[-1] - self._timestamps[-2]
-            if dt > 1e-4:
-                vx = (self._cum_x_hist[-1] - self._cum_x_hist[-2]) / dt
-                vy = (self._cum_y_hist[-1] - self._cum_y_hist[-2]) / dt
+            # Check that previous measurement was also valid to avoid computing velocity across invalid jumps
+            if len(self._valid_flags) >= 2 and list(self._valid_flags)[-2]:
+                dt = self._timestamps[-1] - self._timestamps[-2]
+                if dt > 1e-4:
+                    vx = (self._cum_x_hist[-1] - self._cum_x_hist[-2]) / dt
+                    vy = (self._cum_y_hist[-1] - self._cum_y_hist[-2]) / dt
         v_mag = float(np.sqrt(vx**2 + vy**2))
         self._vel_x_hist.append(vx)
         self._vel_y_hist.append(vy)
@@ -208,6 +246,10 @@ class OpticalMotionEstimator:
             tracking_quality=tracked.tracking_quality,
             measurement_valid=measurement_valid,
             validity_reason=validity_reason,
+            confidence=getattr(tracked, "confidence", 1.0),
+            mad_x_pixels=getattr(tracked, "mad_x", 0.0),
+            mad_y_pixels=getattr(tracked, "mad_y", 0.0),
+            inlier_feature_count=inlier_count,
         )
 
     def _estimate_dominant_frequency(self) -> float:
@@ -270,6 +312,8 @@ class OpticalMotionEstimator:
         """Reset displacement origin and rolling history."""
         self.cum_x = 0.0
         self.cum_y = 0.0
+        self._last_valid_x = None
+        self._last_valid_y = None
         self._timestamps.clear()
         self._cum_x_hist.clear()
         self._cum_y_hist.clear()

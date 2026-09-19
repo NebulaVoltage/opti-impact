@@ -740,3 +740,280 @@ def test_frequency_not_calculated_from_invalid_samples():
     # Because invalid frames exist in recent window, frequency must be NaN
     assert np.isnan(k.dominant_frequency_hz)
 
+
+# ---------------------------------------------------------------------------
+# 11. Step 6A.1-P Precision & Robustness Audit Test Suite (Tests 1 - 10)
+# ---------------------------------------------------------------------------
+
+
+def test_audit_test_1_stationary_scene_noise_floor(synthetic_pattern: np.ndarray):
+    """TEST 1: Stationary camera + stationary specimen.
+    Expected: mean displacement ≈ 0, no false large displacement, very low false-invalid rate (< 0.05 px).
+    """
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    displacements = []
+    for idx in range(60):
+        t = idx * 0.033
+        tp = tracker.track(synthetic_pattern)
+        k = estimator.update(tp, timestamp=t)
+        assert k.measurement_valid is True
+        assert k.validity_reason == "VALID"
+        displacements.append(k.cum_displacement_pixels)
+
+    mean_disp = float(np.mean(displacements))
+    max_disp = float(np.max(displacements))
+    assert mean_disp < 0.05
+    assert max_disp < 0.10
+
+
+def test_audit_test_2_known_subpixel_translation(synthetic_pattern: np.ndarray):
+    """TEST 2: Known small translation.
+    Expected: displacement matches applied subpixel movement accurately.
+    """
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    # Frame 0: Baseline
+    tracker.track(synthetic_pattern)
+    estimator.update(tracker.track(synthetic_pattern), timestamp=0.0)
+
+    # Shift by subpixel distance: dx = +3.25 px, dy = -1.75 px
+    dx_true, dy_true = 3.25, -1.75
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, dx_true], [0, 1, dy_true]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    tp = tracker.track(shifted)
+    k = estimator.update(tp, timestamp=0.033)
+
+    assert k.measurement_valid is True
+    assert k.dx_pixels == pytest.approx(dx_true, abs=0.35)
+    assert k.dy_pixels == pytest.approx(dy_true, abs=0.35)
+    expected_mag = float(np.sqrt(dx_true**2 + dy_true**2))
+    assert k.cum_displacement_pixels == pytest.approx(expected_mag, abs=0.35)
+
+
+def test_audit_test_3_positive_movement_and_return_to_origin(synthetic_pattern: np.ndarray):
+    """TEST 3: Known positive movement and return to original position.
+    Expected: +X -> approximately 0 on return; no huge negative/positive drift.
+    """
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    # Baseline
+    tracker.track(synthetic_pattern)
+    estimator.update(tracker.track(synthetic_pattern), timestamp=0.0)
+
+    # Move +12 px in X
+    h, w = synthetic_pattern.shape[:2]
+    M_fwd = np.float32([[1, 0, 12.0], [0, 1, 0.0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M_fwd, (w, h))
+    for idx in range(5):
+        t = 0.033 * (idx + 1)
+        tp = tracker.track(shifted)
+        k = estimator.update(tp, timestamp=t)
+
+    assert k.dx_pixels == pytest.approx(12.0, abs=0.5)
+
+    # Return to origin (exact original frame)
+    for idx in range(5):
+        t = 0.033 * (idx + 6)
+        tp = tracker.track(synthetic_pattern)
+        k = estimator.update(tp, timestamp=t)
+
+    # Residual drift on return must be near zero (< 0.25 px)
+    assert abs(k.dx_pixels) < 0.25
+    assert abs(k.dy_pixels) < 0.25
+    assert k.cum_displacement_pixels < 0.35
+
+
+def test_audit_test_4_repeated_identical_frames_no_drift(synthetic_pattern: np.ndarray):
+    """TEST 4: Repeated identical frames.
+    Expected: displacement remains constant, no accumulation or drift.
+    """
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    # Move to +8 px
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 8.0], [0, 1, 0.0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    tracker.track(synthetic_pattern)
+    estimator.update(tracker.track(synthetic_pattern), timestamp=0.0)
+
+    disps = []
+    vels = []
+    for idx in range(1, 100):
+        t = idx * 0.033
+        tp = tracker.track(shifted)
+        k = estimator.update(tp, timestamp=t)
+        disps.append(k.cum_displacement_pixels)
+        if idx > 2:
+            vels.append(k.velocity_magnitude_pixels_s)
+
+    # All frames must stay rock solid at ~8.0 px
+    assert np.allclose(disps, 8.0, atol=0.4)
+    # Velocity on identical frames must be ~0 px/s
+    assert np.mean(vels) < 0.5
+
+
+def test_audit_test_5_feature_redetection_continuity(synthetic_pattern: np.ndarray):
+    """TEST 5: Feature re-detection.
+    Expected: no artificial displacement spike or step discontinuity (< 0.5 px).
+    """
+    tracker = OpticalFeatureTracker(TrackerConfig(min_tracked_points=15))
+    estimator = OpticalMotionEstimator()
+
+    tracker.track(synthetic_pattern)
+    estimator.update(tracker.track(synthetic_pattern), timestamp=0.0)
+
+    # Move by 10 px
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 10.0], [0, 1, 0.0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    t_before = tracker.track(shifted)
+    k_before = estimator.update(t_before, timestamp=0.033)
+
+    # Trigger re-detection by reducing points
+    tracker.tracked_pts = tracker.tracked_pts[:3]
+    t_redetect = tracker.track(shifted)
+    assert t_redetect.redetected is True
+    k_after = estimator.update(t_redetect, timestamp=0.066)
+
+    # Re-detection jump must be subpixel (< 0.5 px)
+    assert abs(k_after.dx_pixels - k_before.dx_pixels) < 0.5
+    assert k_after.measurement_valid is True
+
+
+def test_audit_test_6_single_corrupted_feature_rejected():
+    """TEST 6: Single corrupted feature.
+    Expected: corrupted outlier feature rejected by MAD filtering; overall displacement remains stable.
+    """
+    estimator = OpticalMotionEstimator()
+    # 9 inliers at dx=5.0, dy=0.0 and 1 rogue corrupted feature at dx=250.0
+    prev_pts = np.array([[10 * i, 20] for i in range(10)], dtype=np.float32)
+    curr_pts = np.array([[10 * i + 5.0, 20] for i in range(9)] + [[300.0, 20.0]], dtype=np.float32)
+    disps = curr_pts - prev_pts
+
+    # Calculate MAD inlier mask
+    dx_arr = disps[:, 0]
+    dy_arr = disps[:, 1]
+    med_x = float(np.median(dx_arr))
+    med_y = float(np.median(dy_arr))
+    mad_x = float(np.median(np.abs(dx_arr - med_x)))
+    mad_y = float(np.median(np.abs(dy_arr - med_y)))
+    inliers = (np.abs(dx_arr - med_x) <= 2.5 * max(mad_x, 0.35)) & (np.abs(dy_arr - med_y) <= 2.5 * max(mad_y, 0.35))
+
+    tp = TrackedPoints(
+        prev_pts=prev_pts,
+        curr_pts=curr_pts,
+        displacements=disps,
+        status=np.ones(10, dtype=bool),
+        valid_count=10,
+        tracking_quality="GOOD",
+        quality_score=1.0,
+        inlier_mask=inliers,
+    )
+    k = estimator.update(tp, timestamp=1.0)
+    # Displacement must match the 9 inliers (5.0 px), NOT corrupted by 250 px!
+    assert k.dx_pixels == pytest.approx(5.0, abs=0.1)
+    assert k.measurement_valid is True
+
+
+def test_audit_test_7_multi_corrupted_features_graceful_handling():
+    """TEST 7: Several corrupted features.
+    Expected: measurement either remains valid with reduced confidence or becomes invalid.
+    Never silently produces a false large displacement.
+    """
+    estimator = OpticalMotionEstimator(frame_width=1280, frame_height=720, max_step_disp=80.0)
+
+    # 4 inliers at dx=3.0, dy=0.0 and 6 corrupted features with wild scatter
+    prev_pts = np.array([[20 * i, 50] for i in range(10)], dtype=np.float32)
+    curr_pts = np.array(
+        [[20 * i + 3.0, 50] for i in range(4)]
+        + [[500.0, 50.0], [600.0, 60.0], [700.0, 70.0], [800.0, 80.0], [900.0, 90.0], [1000.0, 100.0]],
+        dtype=np.float32,
+    )
+    disps = curr_pts - prev_pts
+
+    # With high corruption, confidence should drop or step jump should be rejected
+    tp = TrackedPoints(
+        prev_pts=prev_pts,
+        curr_pts=curr_pts,
+        displacements=disps,
+        status=np.ones(10, dtype=bool),
+        valid_count=10,
+        tracking_quality="GOOD",
+        quality_score=1.0,
+        confidence=0.10,  # Low confidence due to extreme spread
+    )
+    k = estimator.update(tp, timestamp=1.0)
+    # Must NOT produce a silent valid measurement with wild displacement
+    assert (not k.measurement_valid) or (k.dx_pixels < 10.0)
+
+
+def test_audit_test_8_roi_boundary_condition(synthetic_pattern: np.ndarray):
+    """TEST 8: ROI boundary condition.
+    Expected: no coordinate-system errors; features touching boundary filtered cleanly.
+    """
+    # Specimen ROI: [50, 50, 120, 120]
+    tracker = OpticalFeatureTracker(roi=(50, 50, 120, 120))
+    tp = tracker.track(synthetic_pattern)
+    assert tp.valid_count > 0
+
+    # Ensure all tracked points are within ROI
+    for pt in tp.curr_pts:
+        assert 50 <= pt[0] < 170
+        assert 50 <= pt[1] < 170
+
+    # Large translation that moves features outside ROI
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 100.0], [0, 1, 0.0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+    tp_shifted = tracker.track(shifted)
+    # Features moved outside ROI must be filtered out cleanly without crashing
+    for pt in tp_shifted.curr_pts:
+        assert 50 <= pt[0] < 170
+        assert 50 <= pt[1] < 170
+
+
+def test_audit_test_9_resolution_change_safety():
+    """TEST 9: Resolution change.
+    Expected: safe invalidation/rejection of mismatched frame dimensions.
+    """
+    mgr = CameraManager(CameraConfig(width=1280, height=720))
+    mgr.actual_width = 1280
+    mgr.actual_height = 720
+
+    valid_frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    invalid_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    assert mgr.verify_frame_dimensions(valid_frame) is True
+    assert mgr.verify_frame_dimensions(invalid_frame) is False
+
+
+def test_audit_test_10_lighting_change_resilience(synthetic_pattern: np.ndarray):
+    """TEST 10: Stationary scene with lighting change (auto-exposure / shadow).
+    Expected: no huge displacement artifact; displacement remains bounded (< 0.5 px).
+    """
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    tracker.track(synthetic_pattern)
+    estimator.update(tracker.track(synthetic_pattern), timestamp=0.0)
+
+    # Frame with 30% reduced brightness (simulating shadow / auto-exposure adjustment)
+    darker_frame = (synthetic_pattern.astype(np.float32) * 0.70).astype(np.uint8)
+
+    tp_dark = tracker.track(darker_frame)
+    k_dark = estimator.update(tp_dark, timestamp=0.033)
+
+    assert k_dark.measurement_valid is True
+    # Bidirectional LK and MAD filtering prevent false slip along edges
+    assert k_dark.cum_displacement_pixels < 0.5
+
+

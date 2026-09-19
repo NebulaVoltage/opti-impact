@@ -163,6 +163,13 @@ class CameraManager:
         ret, frame = self.cap.read()
 
         if ret and frame is not None:
+            fh, fw = frame.shape[:2]
+            # Lock resolution: verify that frame matches calibrated camera dimensions
+            if self.actual_width > 0 and self.actual_height > 0:
+                if fw != self.actual_width or fh != self.actual_height:
+                    # Resolution changed unexpectedly
+                    return False, None, now
+
             self.frame_count += 1
             self._timestamps.append(now)
 
@@ -175,6 +182,13 @@ class CameraManager:
             return True, frame, now
 
         return False, None, now
+
+    def verify_frame_dimensions(self, frame: np.ndarray) -> bool:
+        """Verify that incoming frame matches locked resolution."""
+        if frame is None:
+            return False
+        fh, fw = frame.shape[:2]
+        return fw == self.actual_width and fh == self.actual_height
 
     def release(self) -> None:
         """Release video capture device."""

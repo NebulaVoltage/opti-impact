@@ -41,6 +41,7 @@ class OpticalVisualizer:
         roi: Optional[Tuple[int, int, int, int]] = None,
         calibration: Optional[PlanarCalibration] = None,
         show_plot: bool = True,
+        debug_mode: bool = False,
     ) -> np.ndarray:
         """Render optical flow vectors, ROI, HUD telemetry, and live graph onto frame.
 
@@ -52,6 +53,7 @@ class OpticalVisualizer:
             roi: Optional (x, y, w, h) bounding rectangle.
             calibration: Optional PlanarCalibration instance.
             show_plot: Whether to append a live displacement plot strip at the bottom.
+            debug_mode: If True, renders rejected points, reference anchors, and debug telemetry.
 
         Returns:
             Annotated BGR image ready for cv2.imshow or video streaming.
@@ -74,9 +76,10 @@ class OpticalVisualizer:
                 cv2.LINE_AA,
             )
 
-        # 2. Draw Tracked Points & Optical Flow Vectors (strictly within Specimen ROI)
+        # 2. Draw Tracked Points & Optical Flow Vectors
+        inlier_mask = getattr(tracked, "inlier_mask", None)
         if tracked.valid_count > 0:
-            for p_prev, p_curr in zip(tracked.prev_pts, tracked.curr_pts):
+            for idx, (p_prev, p_curr) in enumerate(zip(tracked.prev_pts, tracked.curr_pts)):
                 x0, y0 = int(round(p_prev[0])), int(round(p_prev[1]))
                 x1, y1 = int(round(p_curr[0])), int(round(p_curr[1]))
 
@@ -86,8 +89,16 @@ class OpticalVisualizer:
                     if not (rx <= x1 < rx + rw and ry <= y1 < ry + rh):
                         continue
 
+                is_inlier = inlier_mask[idx] if inlier_mask is not None and idx < len(inlier_mask) else True
+                pt_color = (0, 255, 0) if is_inlier else (0, 165, 255)
+
                 # Feature point circle
-                cv2.circle(vis, (x1, y1), 3, (0, 255, 0), -1, cv2.LINE_AA)
+                cv2.circle(vis, (x1, y1), 3, pt_color, -1, cv2.LINE_AA)
+
+                # In debug mode, draw small reference anchor point
+                if debug_mode and tracked.ref_pts is not None and idx < len(tracked.ref_pts):
+                    xr, yr = int(round(tracked.ref_pts[idx][0])), int(round(tracked.ref_pts[idx][1]))
+                    cv2.circle(vis, (xr, yr), 2, (0, 255, 255), -1, cv2.LINE_AA)
 
                 # Motion vector arrow (scaled for visibility)
                 dx = (p_curr[0] - p_prev[0]) * self.vector_scale
@@ -96,10 +107,17 @@ class OpticalVisualizer:
                     pt_end = (int(round(x1 + dx)), int(round(y1 + dy)))
                     cv2.arrowedLine(vis, (x1, y1), pt_end, (0, 0, 255), 1, tipLength=0.3)
 
+        # In debug mode, draw rejected points in red X markers
+        if debug_mode and getattr(tracked, "rejected_pts", None) is not None:
+            for pt in tracked.rejected_pts:
+                xr, yr = int(round(pt[0])), int(round(pt[1]))
+                if 0 <= xr < w_img and 0 <= yr < h_img:
+                    cv2.drawMarker(vis, (xr, yr), (0, 0, 255), cv2.MARKER_TILTED_CROSS, 6, 1)
+
         # 3. Draw Semi-Transparent Telemetry HUD Overlay
         overlay = vis.copy()
-        hud_w = 360
-        hud_h = 265
+        hud_w = 380
+        hud_h = 310 if debug_mode else 285
         cv2.rectangle(overlay, (10, 10), (10 + hud_w, 10 + hud_h), (20, 20, 20), -1)
         cv2.addWeighted(overlay, 0.75, vis, 0.25, 0, vis)
         cv2.rectangle(vis, (10, 10), (10 + hud_w, 10 + hud_h), (0, 255, 255), 1)
@@ -112,14 +130,24 @@ class OpticalVisualizer:
         )
         v_color = (0, 255, 0) if kinematics.measurement_valid else (0, 0, 255)
         v_text = "VALID" if kinematics.measurement_valid else f"INVALID ({kinematics.validity_reason})"
+        conf_val = getattr(kinematics, "confidence", 1.0)
+        conf_color = (0, 255, 0) if conf_val >= 0.75 else ((0, 165, 255) if conf_val >= 0.40 else (0, 0, 255))
 
         lines = [
-            ("OPTICAL SENSOR TELEMETRY", (0, 255, 255), 0.55, 2),
+            ("OPTICAL SENSOR TELEMETRY" if not debug_mode else "OPTICAL SENSOR [DIAGNOSTIC MODE]", (0, 255, 255), 0.55, 2),
             (f"Camera FPS:        {camera_fps:5.1f}", (255, 255, 255), 0.45, 1),
-            (f"Valid Features:    {tracked.valid_count:5d}", (255, 255, 255), 0.45, 1),
+            (f"Tracked Features:  {tracked.valid_count:5d} (Inliers: {getattr(kinematics, 'inlier_feature_count', tracked.valid_count)})", (255, 255, 255), 0.45, 1),
             (f"Tracking Quality:  {tracked.tracking_quality}", q_color, 0.45, 2),
             (f"Measurement:       {v_text}", v_color, 0.45, 2),
+            (f"Confidence Score:  {conf_val:5.2f} / 1.00", conf_color, 0.45, 2),
         ]
+
+        if debug_mode:
+            mad_x = getattr(kinematics, "mad_x_pixels", 0.0)
+            mad_y = getattr(kinematics, "mad_y_pixels", 0.0)
+            rej_count = len(getattr(tracked, "rejected_pts", []))
+            lines.append((f"MAD Spread X/Y:   {mad_x:4.2f} / {mad_y:4.2f} px", (200, 200, 255), 0.40, 1))
+            lines.append((f"Rejected Points:  {rej_count:5d}", (100, 100, 255), 0.40, 1))
 
         if kinematics.measurement_valid:
             lines.extend([

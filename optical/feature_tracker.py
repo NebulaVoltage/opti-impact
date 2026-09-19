@@ -23,6 +23,9 @@ class TrackerConfig:
     max_lk_error: float = 35.0
     lk_win_size: Tuple[int, int] = (21, 21)
     lk_max_level: int = 3
+    fb_max_error: float = 1.5  # Max bidirectional forward-backward error in pixels
+    mad_k: float = 2.5         # Outlier multiplier for Median Absolute Deviation
+    min_spread: float = 0.35   # Minimum spread floor (pixels) to avoid noise over-filtering
 
 
 @dataclass
@@ -41,6 +44,14 @@ class TrackedPoints:
         ref_pts: Optional N x 2 array of reference baseline positions.
         step_displacements: Optional N x 2 array of inter-frame displacements (curr_pts - prev_pts).
         measurement_valid: True if tracked points are physically valid.
+        fb_errors: Optional N-length array of bidirectional tracking errors in pixels.
+        rejected_pts: Optional M x 2 array of rejected feature points.
+        rejection_reasons: Optional list of rejection reasons for diagnostics.
+        inlier_mask: Optional boolean array marking inliers after MAD filtering.
+        confidence: Normalized measurement confidence score in [0.0, 1.0].
+        mad_x: Median Absolute Deviation along X axis in pixels.
+        mad_y: Median Absolute Deviation along Y axis in pixels.
+        spatial_spread_ratio: Ratio of feature bounding box area to specimen ROI area.
     """
 
     prev_pts: np.ndarray
@@ -54,10 +65,18 @@ class TrackedPoints:
     ref_pts: Optional[np.ndarray] = None
     step_displacements: Optional[np.ndarray] = None
     measurement_valid: bool = True
+    fb_errors: Optional[np.ndarray] = None
+    rejected_pts: Optional[np.ndarray] = None
+    rejection_reasons: Optional[List[str]] = None
+    inlier_mask: Optional[np.ndarray] = None
+    confidence: float = 1.0
+    mad_x: float = 0.0
+    mad_y: float = 0.0
+    spatial_spread_ratio: float = 1.0
 
 
 class OpticalFeatureTracker:
-    """Tracks natural visual features across frames using Lucas–Kanade optical flow."""
+    """Tracks natural visual features across frames using bidirectional Lucas–Kanade optical flow."""
 
     def __init__(
         self,
@@ -146,13 +165,12 @@ class OpticalFeatureTracker:
             curr_gray = frame_bgr_or_gray.copy()
 
         # First frame or re-initialization
-        if self.prev_gray is None or self.tracked_pts is None:
+        if self.prev_gray is None or self.tracked_pts is None or len(self.tracked_pts) == 0:
             self.prev_gray = curr_gray
             corners = self.detect_features(curr_gray)
 
             if corners is not None and len(corners) > 0:
                 self.tracked_pts = corners.astype(np.float32)
-                # Anchor reference points taking into account current offset (0 on reset)
                 raw_pts = corners.reshape(-1, 2).astype(np.float32)
                 self.ref_pts = raw_pts - self.reference_offset
                 self.initial_pts_count = len(corners)
@@ -161,6 +179,7 @@ class OpticalFeatureTracker:
                 score = 1.0 if valid_count >= self.config.min_tracked_points else float(valid_count / max(1, self.config.min_tracked_points))
                 disps = raw_pts - self.ref_pts
                 step_disps = np.zeros_like(disps)
+                inliers = np.ones(valid_count, dtype=bool)
 
                 return TrackedPoints(
                     prev_pts=raw_pts,
@@ -174,6 +193,14 @@ class OpticalFeatureTracker:
                     ref_pts=self.ref_pts,
                     step_displacements=step_disps,
                     measurement_valid=True,
+                    fb_errors=np.zeros(valid_count, dtype=np.float32),
+                    rejected_pts=np.empty((0, 2), dtype=np.float32),
+                    rejection_reasons=[],
+                    inlier_mask=inliers,
+                    confidence=1.0 if quality == "GOOD" else 0.7,
+                    mad_x=0.0,
+                    mad_y=0.0,
+                    spatial_spread_ratio=1.0,
                 )
             else:
                 empty_pts = np.empty((0, 2), dtype=np.float32)
@@ -189,10 +216,18 @@ class OpticalFeatureTracker:
                     ref_pts=empty_pts,
                     step_displacements=empty_pts,
                     measurement_valid=False,
+                    fb_errors=np.empty(0, dtype=np.float32),
+                    rejected_pts=empty_pts,
+                    rejection_reasons=[],
+                    inlier_mask=np.empty(0, dtype=bool),
+                    confidence=0.0,
+                    mad_x=0.0,
+                    mad_y=0.0,
+                    spatial_spread_ratio=0.0,
                 )
 
-        # Execute Lucas-Kanade optical flow
-        new_pts, st, err = cv2.calcOpticalFlowPyrLK(
+        # 1. Forward Lucas-Kanade Optical Flow (prev -> curr)
+        fwd_pts, st_fwd, err_fwd = cv2.calcOpticalFlowPyrLK(
             self.prev_gray,
             curr_gray,
             self.tracked_pts,
@@ -200,31 +235,73 @@ class OpticalFeatureTracker:
             **self.lk_params,
         )
 
-        # Filter valid points
-        if new_pts is not None and st is not None:
-            st_flat = st.flatten() == 1
-            err_flat = err.flatten() if err is not None else np.zeros(len(st_flat))
-            valid_mask = st_flat & (err_flat <= self.config.max_lk_error)
+        # 2. Backward Lucas-Kanade Optical Flow (curr -> prev) for bidirectional consistency
+        rejected_list: List[np.ndarray] = []
+        rejection_reasons: List[str] = []
 
-            # Strict ROI boundary check: Points must remain strictly inside specimen ROI
+        if fwd_pts is not None and st_fwd is not None:
+            bwd_pts, st_bwd, _ = cv2.calcOpticalFlowPyrLK(
+                curr_gray,
+                self.prev_gray,
+                fwd_pts,
+                None,
+                **self.lk_params,
+            )
+
+            st_fwd_flat = st_fwd.flatten() == 1
+            st_bwd_flat = (st_bwd.flatten() == 1) if st_bwd is not None else np.zeros(len(st_fwd_flat), dtype=bool)
+            err_fwd_flat = err_fwd.flatten() if err_fwd is not None else np.zeros(len(st_fwd_flat))
+
+            prev_flat = self.tracked_pts.reshape(-1, 2)
+            curr_flat = fwd_pts.reshape(-1, 2)
+            bwd_flat = bwd_pts.reshape(-1, 2) if bwd_pts is not None else prev_flat
+
+            # Compute bidirectional forward-backward Euclidean distance
+            fb_errors = np.linalg.norm(prev_flat - bwd_flat, axis=1)
+
+            # Check individual filtering conditions
+            status_ok = st_fwd_flat & st_bwd_flat
+            lk_err_ok = err_fwd_flat <= self.config.max_lk_error
+            fb_ok = fb_errors <= self.config.fb_max_error
+
+            # Specimen ROI boundary check: points must remain within ROI bounds
             if self.roi is not None:
                 rx, ry, rw, rh = self.roi
-                pts_flat = new_pts.reshape(-1, 2)
                 in_roi = (
-                    (pts_flat[:, 0] >= rx)
-                    & (pts_flat[:, 0] < rx + rw)
-                    & (pts_flat[:, 1] >= ry)
-                    & (pts_flat[:, 1] < ry + rh)
+                    (curr_flat[:, 0] >= rx)
+                    & (curr_flat[:, 0] < rx + rw)
+                    & (curr_flat[:, 1] >= ry)
+                    & (curr_flat[:, 1] < ry + rh)
                 )
-                valid_mask = valid_mask & in_roi
+            else:
+                in_roi = np.ones(len(curr_flat), dtype=bool)
 
-            good_prev = self.tracked_pts[valid_mask].reshape(-1, 2)
-            good_curr = new_pts[valid_mask].reshape(-1, 2)
+            valid_mask = status_ok & lk_err_ok & fb_ok & in_roi
+
+            # Record rejection diagnostics
+            for idx, is_valid in enumerate(valid_mask):
+                if not is_valid:
+                    pt = curr_flat[idx] if status_ok[idx] else prev_flat[idx]
+                    rejected_list.append(pt)
+                    if not status_ok[idx]:
+                        rejection_reasons.append("LK_FLOW_FAILED")
+                    elif not fb_ok[idx]:
+                        rejection_reasons.append(f"FB_ERROR_HIGH_{fb_errors[idx]:.2f}")
+                    elif not in_roi[idx]:
+                        rejection_reasons.append("OUT_OF_ROI")
+                    else:
+                        rejection_reasons.append("PATCH_SSD_HIGH")
+
+            good_prev = prev_flat[valid_mask]
+            good_curr = curr_flat[valid_mask]
+            good_fb = fb_errors[valid_mask]
+
             if self.ref_pts is not None:
                 aligned_ref = self.ref_pts[: len(valid_mask)]
                 good_ref = aligned_ref[valid_mask].reshape(-1, 2)
             else:
                 good_ref = good_prev
+
             rel_disp = good_curr - good_ref
             step_disp = good_curr - good_prev
             valid_count = len(good_curr)
@@ -234,10 +311,59 @@ class OpticalFeatureTracker:
             good_ref = np.empty((0, 2), dtype=np.float32)
             rel_disp = np.empty((0, 2), dtype=np.float32)
             step_disp = np.empty((0, 2), dtype=np.float32)
+            good_fb = np.empty(0, dtype=np.float32)
             valid_mask = np.empty(0, dtype=bool)
             valid_count = 0
 
-        # Assess tracking quality
+        # 3. Robust Median Absolute Deviation (MAD) Spatial Outlier Filtering
+        mad_x = 0.0
+        mad_y = 0.0
+        inlier_mask = np.ones(valid_count, dtype=bool)
+
+        if valid_count >= 3 and len(rel_disp) > 0:
+            dx_arr = rel_disp[:, 0]
+            dy_arr = rel_disp[:, 1]
+            med_dx = float(np.median(dx_arr))
+            med_dy = float(np.median(dy_arr))
+            mad_x = float(np.median(np.abs(dx_arr - med_dx)))
+            mad_y = float(np.median(np.abs(dy_arr - med_dy)))
+
+            spread_x = max(mad_x, self.config.min_spread)
+            spread_y = max(mad_y, self.config.min_spread)
+
+            inlier_mask = (np.abs(dx_arr - med_dx) <= self.config.mad_k * spread_x) & (
+                np.abs(dy_arr - med_dy) <= self.config.mad_k * spread_y
+            )
+
+            # If at least 3 inliers agree, use inlier-filtered statistics
+            if np.sum(inlier_mask) < 3:
+                # Fallback: keep all if dispersion is uniform
+                inlier_mask = np.ones(valid_count, dtype=bool)
+
+        # 4. Feature Spatial Distribution Ratio
+        if valid_count >= 2 and self.roi is not None:
+            x_min, y_min = np.min(good_curr, axis=0)
+            x_max, y_max = np.max(good_curr, axis=0)
+            span_area = float(max(1.0, (x_max - x_min) * (y_max - y_min)))
+            roi_area = float(max(1.0, self.roi[2] * self.roi[3]))
+            spatial_spread_ratio = min(1.0, max(0.05, span_area / (0.40 * roi_area)))
+        else:
+            spatial_spread_ratio = 1.0 if valid_count > 0 else 0.0
+
+        # 5. Continuous Measurement Confidence Score [0.0, 1.0]
+        if valid_count > 0:
+            s_count = min(1.0, float(valid_count / max(1, self.config.min_tracked_points)))
+            mean_fb = float(np.mean(good_fb)) if len(good_fb) > 0 else 0.0
+            s_fb = max(0.0, 1.0 - (mean_fb / max(0.1, self.config.fb_max_error)))
+            s_spread = max(0.0, 1.0 - (mad_x + mad_y) / 10.0)
+            s_dist = min(1.0, max(0.1, spatial_spread_ratio))
+
+            confidence = float(0.35 * s_count + 0.30 * s_fb + 0.20 * s_spread + 0.15 * s_dist)
+            confidence = min(1.0, max(0.0, confidence))
+        else:
+            confidence = 0.0
+
+        # Assess tracking quality categorical
         score = float(valid_count / max(1, self.initial_pts_count)) if self.initial_pts_count > 0 else 0.0
         score = min(1.0, max(0.0, score))
 
@@ -248,19 +374,22 @@ class OpticalFeatureTracker:
         else:
             quality = "LOST"
 
-        # Check if re-detection is required
+        # 6. Safe Feature Re-Detection Handling (Preventing Reference Drift)
         redetected = False
         if valid_count < self.config.min_tracked_points:
-            # Preserve structural displacement continuity across re-detection
-            if valid_count > 0:
-                current_offset = np.median(rel_disp, axis=0)
+            # Preserve structural displacement continuity across re-detection only if inliers exist
+            if valid_count >= 3 and len(rel_disp) > 0 and np.sum(inlier_mask) >= 3:
+                current_offset = np.median(rel_disp[inlier_mask], axis=0)
                 self.reference_offset = current_offset.astype(np.float32)
+            elif valid_count == 0:
+                # On total tracking loss, do not carry forward stale corrupted offsets
+                self.reference_offset = np.zeros(2, dtype=np.float32)
 
             new_corners = self.detect_features(curr_gray)
             if new_corners is not None and len(new_corners) >= self.config.min_tracked_points:
                 raw_new = new_corners.reshape(-1, 2).astype(np.float32)
                 self.tracked_pts = new_corners.astype(np.float32)
-                # Re-reference new corners to existing displacement offset to avoid step jump
+                # Re-reference new corners to verified displacement offset
                 self.ref_pts = raw_new - self.reference_offset
                 self.initial_pts_count = len(new_corners)
                 good_curr = raw_new
@@ -268,9 +397,12 @@ class OpticalFeatureTracker:
                 good_ref = self.ref_pts
                 rel_disp = good_curr - good_ref
                 step_disp = np.zeros_like(good_curr)
+                good_fb = np.zeros(len(new_corners), dtype=np.float32)
                 valid_count = len(new_corners)
+                inlier_mask = np.ones(valid_count, dtype=bool)
                 score = 1.0
                 quality = "GOOD"
+                confidence = 0.95
                 redetected = True
             else:
                 self.tracked_pts = good_curr.reshape(-1, 1, 2) if valid_count > 0 else None
@@ -281,6 +413,7 @@ class OpticalFeatureTracker:
             self.ref_pts = good_ref
 
         self.prev_gray = curr_gray
+        rejected_arr = np.array(rejected_list, dtype=np.float32) if rejected_list else np.empty((0, 2), dtype=np.float32)
 
         return TrackedPoints(
             prev_pts=good_prev,
@@ -294,6 +427,14 @@ class OpticalFeatureTracker:
             ref_pts=good_ref,
             step_displacements=step_disp,
             measurement_valid=(quality != "LOST"),
+            fb_errors=good_fb,
+            rejected_pts=rejected_arr,
+            rejection_reasons=rejection_reasons,
+            inlier_mask=inlier_mask,
+            confidence=confidence,
+            mad_x=mad_x,
+            mad_y=mad_y,
+            spatial_spread_ratio=spatial_spread_ratio,
         )
 
     def reset(self) -> None:
@@ -303,3 +444,4 @@ class OpticalFeatureTracker:
         self.ref_pts = None
         self.reference_offset = np.zeros(2, dtype=np.float32)
         self.initial_pts_count = 0
+
