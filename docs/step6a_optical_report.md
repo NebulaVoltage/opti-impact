@@ -21,41 +21,52 @@ The optical tracking subsystem (`optical/feature_tracker.py`) uses classical mar
    - Quality level: $0.01$ (eigenvalue threshold relative to strongest corner)
    - Minimum distance between corners: $d_{\text{min}} = 10\text{ px}$
    - Block size: $7 \times 7$ pixels
-2. **Optical Flow Tracking**: Pyramidal Lucas–Kanade optical flow (`cv2.calcOpticalFlowPyrLK`):
+2. **Pyramidal Lucas–Kanade Optical Flow** (`cv2.calcOpticalFlowPyrLK`):
    - Search window: $21 \times 21$ pixels
    - Pyramid levels: $3$ (enables tracking of displacement up to $\sim 30\text{ px/frame}$)
    - Termination criteria: $\epsilon = 0.03\text{ px}$ or $\text{max\_iter} = 30$
-   - Status & Error Filtering: Discard points where status flag $\neq 1$ or LK bidirectional error exceeds $12.0\text{ px}$.
-3. **Tracking Quality Grading**:
-   - $\text{valid\_count} \ge 10$: `GOOD`
-   - $0 < \text{valid\_count} < 10$: `DEGRADED`
-   - $\text{valid\_count} = 0$: `LOST`
-4. **Failure Recovery & Re-detection**: If tracked features fall below `min_tracked_points` (default 10) due to occlusions, severe motion blur, or lighting changes, Shi–Tomasi detection automatically re-runs within the ROI. Re-detected feature points initialize with zero differential displacement relative to the previous frame, preventing artificial jumps in cumulative displacement.
+   - Status & Error Filtering: Discard points where status flag $\neq 1$ or LK bidirectional error exceeds $35.0\text{ px}$.
+3. **Strict Specimen ROI Enforcement**:
+   All tracked feature coordinates are strictly validated against the specimen ROI boundaries:
+   $$x_{\text{roi}} \le x_i < x_{\text{roi}} + w_{\text{roi}}, \quad y_{\text{roi}} \le y_i < y_{\text{roi}} + h_{\text{roi}}$$
+   Any feature drifting outside the specimen ROI is immediately dropped from the structural tracking population, preventing background feature contamination.
+4. **Reference-Based Feature Association & Re-Detection**:
+   - Features maintain explicit reference baseline coordinates $\mathbf{p}_{\text{ref}, i} = (x_{\text{ref}, i}, y_{\text{ref}, i})$.
+   - When feature counts drop below `min_tracked_points` (default 15), re-detection is triggered within the ROI.
+   - Newly detected points $\mathbf{p}_{\text{new}}$ are anchored to the pre-existing displacement offset $\mathbf{D}_0 = (\bar{dx}, \bar{dy})$ via $\mathbf{p}_{\text{ref}} = \mathbf{p}_{\text{new}} - \mathbf{D}_0$. This guarantees zero step discontinuity across re-detection frames while preserving long-term structural reference integrity.
 
 ---
 
 ## 3. Motion Derivation Methodology
-The kinematic estimator (`optical/optical_motion.py`) extracts physical structural metrics from point clouds:
-1. **Differential Displacement ($dx, dy$)**:
-   $$\Delta x_t = \text{median}\left(\{x_{i, t} - x_{i, t-1}\}_{i=1}^N\right)$$
-   $$\Delta y_t = \text{median}\left(\{y_{i, t} - y_{i, t-1}\}_{i=1}^N\right)$$
-   Using the spatial median guarantees robustness against localized tracking outliers, surface reflections, or individual feature dropouts.
-2. **Global Camera Wobble Compensation**:
-   When background reference features are configured outside the specimen ROI:
-   $$\Delta x_{\text{structural}} = \Delta x_{\text{specimen}} - \Delta x_{\text{background}}$$
-   $$\Delta y_{\text{structural}} = \Delta y_{\text{specimen}} - \Delta y_{\text{background}}$$
-3. **Cumulative Displacement**:
-   $$X(t) = \sum_{\tau=1}^t \Delta x_\tau, \quad Y(t) = \sum_{\tau=1}^t \Delta y_\tau, \quad R(t) = \sqrt{X(t)^2 + Y(t)^2}$$
-4. **Velocity Vector**:
-   $$v_x(t) = \frac{X(t) - X(t - \Delta t)}{\Delta t}, \quad v_y(t) = \frac{Y(t) - Y(t - \Delta t)}{\Delta t}$$
+The kinematic estimator (`optical/optical_motion.py`) extracts physical structural metrics relative to the reference baseline:
+1. **Relative Feature Displacements**:
+   $$\Delta x_{i} = x_{i, t} - x_{\text{ref}, i}, \quad \Delta y_{i} = y_{i, t} - y_{\text{ref}, i}$$
+2. **Robust Median Structural Displacement**:
+   $$\text{structural\_dx} = \text{median}\left(\{\Delta x_i\}_{i=1}^N\right)$$
+   $$\text{structural\_dy} = \text{median}\left(\{\Delta y_i\}_{i=1}^N\right)$$
+   $$\text{structural\_displacement} = \sqrt{\text{structural\_dx}^2 + \text{structural\_dy}^2}$$
+   *Non-Accumulating Position Formulation*: Displacements are measured directly against the reference baseline, completely eliminating unbounded frame-to-frame accumulator drift.
+3. **Global Camera Wobble Compensation**:
+   When background reference features are tracked outside the structural ROI:
+   $$\text{structural\_dx} = \text{structural\_dx}_{\text{specimen}} - \text{median}\left(\{\Delta x_{\text{bg}, j}\}\right)$$
+   $$\text{structural\_dy} = \text{structural\_dy}_{\text{specimen}} - \text{median}\left(\{\Delta y_{\text{bg}, j}\}\right)$$
+4. **Physical Sanity Checks & Measurement Validity**:
+   Because camera resolution is $1280 \times 720$, physical plausibility is strictly enforced:
+   - If $|\text{structural\_dx}| > 1280$ or $|\text{structural\_dy}| > 720$: `measurement_valid = False` (`EXCEEDS_FRAME_BOUNDS`)
+   - If single-frame jump $> 80\text{ px}$ without re-detection: `measurement_valid = False` (`EXCESSIVE_STEP_DISPLACEMENT`)
+   - If tracking lost: `measurement_valid = False` (`TRACKING_LOST`)
+   - Reports `OPTICAL MOTION INVALID` on HUD until valid tracking is re-established.
+5. **Mathematically Consistent Velocity**:
+   $$v_x(t) = \frac{\text{structural\_dx}(t) - \text{structural\_dx}(t - \Delta t)}{\Delta t}, \quad v_y(t) = \frac{\text{structural\_dy}(t) - \text{structural\_dy}(t - \Delta t)}{\Delta t}$$
    $$v(t) = \sqrt{v_x(t)^2 + v_y(t)^2}$$
-5. **Savitzky–Golay Smoothed Acceleration**:
-   Direct double differentiation of video pixel coordinates severely amplifies high-frequency image quantization noise. A Savitzky–Golay filter ($W = 7$, polynomial order $2$) smooths the velocity trajectory before computing numerical acceleration:
+   Velocity is the direct time derivative of structural position, ensuring mathematical consistency.
+6. **Savitzky–Golay Smoothed Acceleration**:
+   A Savitzky–Golay filter ($W = 7$, polynomial order $2$) smooths the velocity trajectory before numerical differentiation:
    $$a(t) = \frac{v_{\text{smooth}}(t) - v_{\text{smooth}}(t - \Delta t)}{\Delta t}$$
-6. **Dominant Frequency via FFT**:
-   Estimated on a rolling sliding buffer ($N = 128$ frames) along the primary motion coordinate (axis with maximum variance) using a Hanning window and one-sided FFT:
+7. **Dominant Frequency via FFT**:
+   Estimated on valid measurement frames over a rolling sliding buffer ($N = 128$ frames) along the primary motion coordinate (axis with maximum variance) using a Hanning window and one-sided FFT:
    $$f_{\text{dom}} = \arg\max_{f \ge 0.5\text{ Hz}} |X(f)|$$
-   Operating on the directional coordinate rather than radial magnitude $R(t)$ avoids the artificial frequency-doubling artifact induced by half-wave rectification ($|\sin(\omega t)|$).
+   Operating on the directional coordinate rather than radial magnitude $R(t)$ avoids the artificial frequency-doubling artifact induced by half-wave rectification ($|\sin(\omega t)|$). Frequency is evaluated only when the measurement history is free of invalid or jump-corrupted frames.
 
 ---
 

@@ -37,6 +37,8 @@ class OpticalKinematics:
     dominant_frequency_hz: float
     valid_feature_count: int
     tracking_quality: str
+    measurement_valid: bool = True
+    validity_reason: str = "VALID"
 
 
 class OpticalMotionEstimator:
@@ -47,6 +49,9 @@ class OpticalMotionEstimator:
         history_len: int = 300,
         min_freq: float = 0.5,
         smoothing_window: int = 7,
+        frame_width: int = 1280,
+        frame_height: int = 720,
+        max_step_disp: float = 80.0,
     ):
         """Initialize motion estimator.
 
@@ -54,12 +59,18 @@ class OpticalMotionEstimator:
             history_len: Length of rolling history buffer for differentiation and FFT.
             min_freq: Minimum frequency in Hz for dominant frequency peak search.
             smoothing_window: Odd integer window length for kinematic smoothing.
+            frame_width: Max camera frame width in pixels for sanity validation.
+            frame_height: Max camera frame height in pixels for sanity validation.
+            max_step_disp: Maximum plausible single-frame displacement step in pixels.
         """
         self.history_len = history_len
         self.min_freq = min_freq
         self.smoothing_window = smoothing_window if smoothing_window % 2 != 0 else smoothing_window + 1
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.max_step_disp = max_step_disp
 
-        # Cumulative displacement accumulators
+        # Structural displacement relative to reference baseline
         self.cum_x: float = 0.0
         self.cum_y: float = 0.0
 
@@ -70,6 +81,7 @@ class OpticalMotionEstimator:
         self._cum_disp_hist: Deque[float] = deque(maxlen=history_len)
         self._vel_x_hist: Deque[float] = deque(maxlen=history_len)
         self._vel_y_hist: Deque[float] = deque(maxlen=history_len)
+        self._valid_flags: Deque[bool] = deque(maxlen=history_len)
 
         self.frame_counter: int = 0
 
@@ -82,7 +94,7 @@ class OpticalMotionEstimator:
         """Process frame tracking result and compute robust structural kinematics.
 
         Args:
-            tracked: TrackedPoints from the specimen ROI.
+            tracked: TrackedPoints from the specimen ROI (displacements relative to reference).
             timestamp: Monotonic timestamp in seconds.
             bg_tracked: Optional TrackedPoints from stationary background for camera motion rejection.
 
@@ -91,7 +103,7 @@ class OpticalMotionEstimator:
         """
         self.frame_counter += 1
 
-        # 1. Robust median displacement aggregation
+        # 1. Robust median displacement aggregation relative to reference
         if tracked.valid_count > 0 and len(tracked.displacements) > 0:
             median_dx = float(np.median(tracked.displacements[:, 0]))
             median_dy = float(np.median(tracked.displacements[:, 1]))
@@ -99,32 +111,50 @@ class OpticalMotionEstimator:
             median_dx = 0.0
             median_dy = 0.0
 
-        # 2. Camera Global Motion Rejection
-        # If background points are tracked, subtract global camera motion
+        # 2. Camera Global Motion Rejection (Background Subtraction)
         if bg_tracked is not None and bg_tracked.valid_count > 0 and len(bg_tracked.displacements) > 0:
             bg_dx = float(np.median(bg_tracked.displacements[:, 0]))
             bg_dy = float(np.median(bg_tracked.displacements[:, 1]))
-            # Subtract camera motion
             median_dx -= bg_dx
             median_dy -= bg_dy
 
-        frame_disp = float(np.sqrt(median_dx**2 + median_dy**2))
+        structural_dx = median_dx
+        structural_dy = median_dy
+        structural_disp = float(np.sqrt(structural_dx**2 + structural_dy**2))
 
-        # Accumulate cumulative displacement relative to initial baseline
-        self.cum_x += median_dx
-        self.cum_y += median_dy
-        cum_disp = float(np.sqrt(self.cum_x**2 + self.cum_y**2))
+        # 3. Physical Sanity Checks & Measurement Validity Evaluation
+        measurement_valid = True
+        validity_reason = "VALID"
 
-        # Append to histories
+        if tracked.tracking_quality == "LOST" or tracked.valid_count == 0:
+            measurement_valid = False
+            validity_reason = "TRACKING_LOST"
+        elif abs(structural_dx) > self.frame_width or abs(structural_dy) > self.frame_height:
+            measurement_valid = False
+            validity_reason = "EXCEEDS_FRAME_BOUNDS"
+        elif len(self._cum_x_hist) > 0 and not tracked.redetected:
+            step_dx = abs(structural_dx - self._cum_x_hist[-1])
+            step_dy = abs(structural_dy - self._cum_y_hist[-1])
+            if step_dx > self.max_step_disp or step_dy > self.max_step_disp:
+                measurement_valid = False
+                validity_reason = "EXCESSIVE_STEP_DISPLACEMENT"
+
+        # Position-based structural displacement (relative to reference, NOT unbounded accumulator)
+        self.cum_x = structural_dx
+        self.cum_y = structural_dy
+        cum_disp = structural_disp
+
+        # Append to rolling histories
         self._timestamps.append(timestamp)
         self._cum_x_hist.append(self.cum_x)
         self._cum_y_hist.append(self.cum_y)
         self._cum_disp_hist.append(cum_disp)
+        self._valid_flags.append(measurement_valid)
 
-        # 3. Velocity Calculation
+        # 4. Mathematically Consistent Velocity Calculation (v = Delta x / Delta t)
         vx = 0.0
         vy = 0.0
-        if len(self._timestamps) >= 2:
+        if measurement_valid and len(self._timestamps) >= 2 and not tracked.redetected:
             dt = self._timestamps[-1] - self._timestamps[-2]
             if dt > 1e-4:
                 vx = (self._cum_x_hist[-1] - self._cum_x_hist[-2]) / dt
@@ -133,10 +163,10 @@ class OpticalMotionEstimator:
         self._vel_x_hist.append(vx)
         self._vel_y_hist.append(vy)
 
-        # 4. Acceleration Calculation with Smoothing
+        # 5. Acceleration Calculation with Savitzky-Golay Smoothing
         ax = 0.0
         ay = 0.0
-        if len(self._timestamps) >= self.smoothing_window:
+        if measurement_valid and len(self._timestamps) >= self.smoothing_window:
             t_arr = np.array(self._timestamps)
             dt_mean = float(np.mean(np.diff(t_arr[-self.smoothing_window :])))
 
@@ -144,7 +174,6 @@ class OpticalMotionEstimator:
                 vx_arr = np.array(list(self._vel_x_hist)[-self.smoothing_window :])
                 vy_arr = np.array(list(self._vel_y_hist)[-self.smoothing_window :])
 
-                # Smooth velocity using Savitzky-Golay filter to suppress differentiation noise
                 try:
                     vx_smooth = savgol_filter(vx_arr, window_length=self.smoothing_window, polyorder=2)
                     vy_smooth = savgol_filter(vy_arr, window_length=self.smoothing_window, polyorder=2)
@@ -156,15 +185,15 @@ class OpticalMotionEstimator:
 
         a_mag = float(np.sqrt(ax**2 + ay**2))
 
-        # 5. Dominant Optical Frequency Estimation
-        dom_freq = self._estimate_dominant_frequency()
+        # 6. Dominant Optical Frequency Estimation on Valid History Only
+        dom_freq = self._estimate_dominant_frequency() if measurement_valid else float("nan")
 
         return OpticalKinematics(
             timestamp=timestamp,
             frame_index=self.frame_counter,
-            dx_pixels=median_dx,
-            dy_pixels=median_dy,
-            displacement_pixels=frame_disp,
+            dx_pixels=structural_dx,
+            dy_pixels=structural_dy,
+            displacement_pixels=structural_disp,
             cum_x_pixels=self.cum_x,
             cum_y_pixels=self.cum_y,
             cum_displacement_pixels=cum_disp,
@@ -177,17 +206,27 @@ class OpticalMotionEstimator:
             dominant_frequency_hz=dom_freq,
             valid_feature_count=tracked.valid_count,
             tracking_quality=tracked.tracking_quality,
+            measurement_valid=measurement_valid,
+            validity_reason=validity_reason,
         )
 
     def _estimate_dominant_frequency(self) -> float:
-        """Estimate the dominant frequency of optical displacement via FFT on the primary motion axis."""
+        """Estimate the dominant frequency of optical displacement via FFT on the primary motion axis.
+
+        Calculates frequency only from valid measurement frames, rejecting invalid or re-detection jumps.
+        """
         # Require at least 32 points for meaningful spectral resolution
         if len(self._timestamps) < 32:
             return float("nan")
 
-        x_arr = np.array(self._cum_x_hist)
-        y_arr = np.array(self._cum_y_hist)
-        t_arr = np.array(self._timestamps)
+        # Verify that recent window contains valid measurements
+        recent_flags = list(self._valid_flags)[-32:]
+        if not all(recent_flags):
+            return float("nan")
+
+        x_arr = np.array(list(self._cum_x_hist)[-128:])
+        y_arr = np.array(list(self._cum_y_hist)[-128:])
+        t_arr = np.array(list(self._timestamps)[-128:])
 
         # Select primary axis of motion (oscillation coordinate) to avoid rectification doubling
         var_x = float(np.var(x_arr))
@@ -237,4 +276,5 @@ class OpticalMotionEstimator:
         self._cum_disp_hist.clear()
         self._vel_x_hist.clear()
         self._vel_y_hist.clear()
+        self._valid_flags.clear()
         self.frame_counter = 0

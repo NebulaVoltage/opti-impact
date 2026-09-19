@@ -27,6 +27,7 @@ class OpticalSessionRecorder:
         "optical_dominant_frequency_hz",
         "valid_feature_count",
         "tracking_quality",
+        "measurement_valid",
         "camera_fps",
     ]
 
@@ -77,6 +78,7 @@ class OpticalSessionRecorder:
             ),
             "valid_feature_count": int(kinematics.valid_feature_count),
             "tracking_quality": str(kinematics.tracking_quality),
+            "measurement_valid": bool(kinematics.measurement_valid),
             "camera_fps": float(camera_fps),
         }
         self._records.append(row)

@@ -74,11 +74,17 @@ class OpticalVisualizer:
                 cv2.LINE_AA,
             )
 
-        # 2. Draw Tracked Points & Optical Flow Vectors
+        # 2. Draw Tracked Points & Optical Flow Vectors (strictly within Specimen ROI)
         if tracked.valid_count > 0:
             for p_prev, p_curr in zip(tracked.prev_pts, tracked.curr_pts):
                 x0, y0 = int(round(p_prev[0])), int(round(p_prev[1]))
                 x1, y1 = int(round(p_curr[0])), int(round(p_curr[1]))
+
+                # Strictly skip points outside specimen ROI
+                if roi is not None:
+                    rx, ry, rw, rh = roi
+                    if not (rx <= x1 < rx + rw and ry <= y1 < ry + rh):
+                        continue
 
                 # Feature point circle
                 cv2.circle(vis, (x1, y1), 3, (0, 255, 0), -1, cv2.LINE_AA)
@@ -92,8 +98,8 @@ class OpticalVisualizer:
 
         # 3. Draw Semi-Transparent Telemetry HUD Overlay
         overlay = vis.copy()
-        hud_w = 340
-        hud_h = 240
+        hud_w = 360
+        hud_h = 265
         cv2.rectangle(overlay, (10, 10), (10 + hud_w, 10 + hud_h), (20, 20, 20), -1)
         cv2.addWeighted(overlay, 0.75, vis, 0.25, 0, vis)
         cv2.rectangle(vis, (10, 10), (10 + hud_w, 10 + hud_h), (0, 255, 255), 1)
@@ -104,34 +110,52 @@ class OpticalVisualizer:
             if tracked.tracking_quality == "GOOD"
             else ((0, 165, 255) if tracked.tracking_quality == "DEGRADED" else (0, 0, 255))
         )
+        v_color = (0, 255, 0) if kinematics.measurement_valid else (0, 0, 255)
+        v_text = "VALID" if kinematics.measurement_valid else f"INVALID ({kinematics.validity_reason})"
 
         lines = [
             ("OPTICAL SENSOR TELEMETRY", (0, 255, 255), 0.55, 2),
             (f"Camera FPS:        {camera_fps:5.1f}", (255, 255, 255), 0.45, 1),
             (f"Valid Features:    {tracked.valid_count:5d}", (255, 255, 255), 0.45, 1),
             (f"Tracking Quality:  {tracked.tracking_quality}", q_color, 0.45, 2),
-            (f"Disp X:           {kinematics.cum_x_pixels:+7.2f} px", (255, 255, 255), 0.45, 1),
-            (f"Disp Y:           {kinematics.cum_y_pixels:+7.2f} px", (255, 255, 255), 0.45, 1),
-            (f"Total Disp:        {kinematics.cum_displacement_pixels:7.2f} px", (0, 255, 255), 0.45, 2),
-            (f"Velocity Mag:      {kinematics.velocity_magnitude_pixels_s:7.2f} px/s", (255, 255, 255), 0.45, 1),
-            (
-                f"Opt Frequency:     {kinematics.dominant_frequency_hz:5.2f} Hz"
-                if not np.isnan(kinematics.dominant_frequency_hz)
-                else "Opt Frequency:     N/A (insufficient)",
-                (255, 200, 100),
-                0.45,
-                1,
-            ),
+            (f"Measurement:       {v_text}", v_color, 0.45, 2),
         ]
+
+        if kinematics.measurement_valid:
+            lines.extend([
+                (f"Disp X:           {kinematics.cum_x_pixels:+7.2f} px", (255, 255, 255), 0.45, 1),
+                (f"Disp Y:           {kinematics.cum_y_pixels:+7.2f} px", (255, 255, 255), 0.45, 1),
+                (f"Total Disp:        {kinematics.cum_displacement_pixels:7.2f} px", (0, 255, 255), 0.45, 2),
+                (f"Velocity Mag:      {kinematics.velocity_magnitude_pixels_s:7.2f} px/s", (255, 255, 255), 0.45, 1),
+                (
+                    f"Opt Frequency:     {kinematics.dominant_frequency_hz:5.2f} Hz"
+                    if not np.isnan(kinematics.dominant_frequency_hz)
+                    else "Opt Frequency:     N/A (insufficient)",
+                    (255, 200, 100),
+                    0.45,
+                    1,
+                ),
+            ])
+        else:
+            lines.extend([
+                ("Disp X:           OPTICAL MOTION INVALID", (0, 0, 255), 0.45, 1),
+                ("Disp Y:           OPTICAL MOTION INVALID", (0, 0, 255), 0.45, 1),
+                ("Total Disp:        OPTICAL MOTION INVALID", (0, 0, 255), 0.45, 2),
+                ("Velocity Mag:      N/A (INVALID)", (150, 150, 150), 0.45, 1),
+                ("Opt Frequency:     N/A (INVALID)", (150, 150, 150), 0.45, 1),
+            ])
 
         # Metric calibration line
         if calibration is not None and calibration.is_calibrated and calibration.scale_mm_per_pixel is not None:
-            disp_mm = kinematics.cum_displacement_pixels * calibration.scale_mm_per_pixel
-            lines.append((f"Physical Disp:     {disp_mm:6.2f} mm", (50, 255, 50), 0.45, 2))
+            if kinematics.measurement_valid:
+                disp_mm = kinematics.cum_displacement_pixels * calibration.scale_mm_per_pixel
+                lines.append((f"Physical Disp:     {disp_mm:6.2f} mm", (50, 255, 50), 0.45, 2))
+            else:
+                lines.append(("Physical Disp:     INVALID", (0, 0, 255), 0.45, 2))
         else:
             lines.append(("METRIC CALIBRATION: NOT ACTIVE", (150, 150, 150), 0.40, 1))
 
-        y_offset = 32
+        y_offset = 30
         for text, col, scale, thickness in lines:
             cv2.putText(
                 vis,
@@ -145,9 +169,26 @@ class OpticalVisualizer:
             )
             y_offset += 20
 
+        # Draw red warning banner on top center if invalid
+        if not kinematics.measurement_valid:
+            warn_text = f"OPTICAL MOTION INVALID: {kinematics.validity_reason}"
+            cv2.rectangle(vis, (w_img // 2 - 250, 15), (w_img // 2 + 250, 55), (0, 0, 200), -1)
+            cv2.rectangle(vis, (w_img // 2 - 250, 15), (w_img // 2 + 250, 55), (0, 255, 255), 2)
+            cv2.putText(
+                vis,
+                warn_text,
+                (w_img // 2 - 235, 42),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
         # 4. Live Rolling Displacement Graph Strip
         if show_plot:
-            self._disp_history.append(kinematics.cum_displacement_pixels)
+            disp_val = kinematics.cum_displacement_pixels if kinematics.measurement_valid else 0.0
+            self._disp_history.append(disp_val)
             vis = self._draw_embedded_plot(vis)
 
         return vis

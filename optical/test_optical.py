@@ -218,9 +218,18 @@ def test_camera_motion_rejection():
 
 
 def test_velocity_calculation():
-    """Verify velocity equals displacement divided by dt."""
+    """Verify velocity equals displacement derivative divided by dt."""
     estimator = OpticalMotionEstimator()
-    dummy_tracked = TrackedPoints(
+    tp1 = TrackedPoints(
+        prev_pts=np.array([[0, 0]], dtype=np.float32),
+        curr_pts=np.array([[0, 0]], dtype=np.float32),
+        displacements=np.array([[0, 0]], dtype=np.float32),
+        status=np.ones(1, dtype=bool),
+        valid_count=1,
+        tracking_quality="GOOD",
+        quality_score=1.0,
+    )
+    tp2 = TrackedPoints(
         prev_pts=np.array([[0, 0]], dtype=np.float32),
         curr_pts=np.array([[10, 0]], dtype=np.float32),
         displacements=np.array([[10, 0]], dtype=np.float32),
@@ -230,8 +239,8 @@ def test_velocity_calculation():
         quality_score=1.0,
     )
 
-    k1 = estimator.update(dummy_tracked, timestamp=1.0)
-    k2 = estimator.update(dummy_tracked, timestamp=1.5)  # dt = 0.5s, displacement = 10 px
+    k1 = estimator.update(tp1, timestamp=1.0)
+    k2 = estimator.update(tp2, timestamp=1.5)  # dt = 0.5s, displacement changed from 0 to 10 px
     assert k2.velocity_x_pixels_s == pytest.approx(20.0, abs=1e-2)
     assert k2.velocity_magnitude_pixels_s == pytest.approx(20.0, abs=1e-2)
 
@@ -272,15 +281,13 @@ def test_synthetic_frequency_recovery():
 
     for idx in range(120):
         t = idx * dt
-        # Sine displacement of 10 px
+        # Sine displacement of 10 px relative to reference baseline
         disp_now = 10.0 * np.sin(2.0 * np.pi * f_target * t)
-        disp_prev = 10.0 * np.sin(2.0 * np.pi * f_target * (t - dt)) if idx > 0 else 0.0
-        step_disp = disp_now - disp_prev
 
         tp = TrackedPoints(
             prev_pts=np.array([[0, 0]], dtype=np.float32),
-            curr_pts=np.array([[step_disp, 0]], dtype=np.float32),
-            displacements=np.array([[step_disp, 0]], dtype=np.float32),
+            curr_pts=np.array([[disp_now, 0]], dtype=np.float32),
+            displacements=np.array([[disp_now, 0]], dtype=np.float32),
             status=np.ones(1, dtype=bool),
             valid_count=1,
             tracking_quality="GOOD",
@@ -463,3 +470,273 @@ def test_visualizer_renders_without_error(synthetic_pattern: np.ndarray):
     )
     assert annotated is not None
     assert annotated.shape[0] > bgr.shape[0]  # Plot strip added
+
+
+# ---------------------------------------------------------------------------
+# 10. Step 6A Bug Fix Regression Tests (Reference-Based Displacement)
+# ---------------------------------------------------------------------------
+
+
+def test_static_specimen_remains_near_zero_displacement(synthetic_pattern: np.ndarray):
+    """Regression Test 1: Static specimen frames must remain near zero displacement."""
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    for idx in range(60):
+        t = idx * 0.033
+        tp = tracker.track(synthetic_pattern)
+        k = estimator.update(tp, timestamp=t)
+
+    assert k.cum_displacement_pixels == pytest.approx(0.0, abs=0.05)
+    assert k.measurement_valid is True
+
+
+def test_known_positive_10px_translation(synthetic_pattern: np.ndarray):
+    """Regression Test 2: Known +10 px translation produces approximately +10 px displacement."""
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    # Frame 0: Baseline
+    tp0 = tracker.track(synthetic_pattern)
+    k0 = estimator.update(tp0, timestamp=0.0)
+
+    # Frame 1: Shift +10 px in X
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 10], [0, 1, 0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    tp1 = tracker.track(shifted)
+    k1 = estimator.update(tp1, timestamp=0.033)
+
+    assert k1.dx_pixels == pytest.approx(10.0, abs=0.4)
+    assert k1.dy_pixels == pytest.approx(0.0, abs=0.4)
+    assert k1.cum_displacement_pixels == pytest.approx(10.0, abs=0.4)
+    assert k1.measurement_valid is True
+
+
+def test_known_negative_10px_translation(synthetic_pattern: np.ndarray):
+    """Regression Test 3: Known -10 px translation produces approximately -10 px displacement."""
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    tp0 = tracker.track(synthetic_pattern)
+    k0 = estimator.update(tp0, timestamp=0.0)
+
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, -10], [0, 1, 0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    tp1 = tracker.track(shifted)
+    k1 = estimator.update(tp1, timestamp=0.033)
+
+    assert k1.dx_pixels == pytest.approx(-10.0, abs=0.4)
+    assert k1.dy_pixels == pytest.approx(0.0, abs=0.4)
+    assert k1.cum_displacement_pixels == pytest.approx(10.0, abs=0.4)
+    assert k1.measurement_valid is True
+
+
+def test_known_20px_translation_magnitude(synthetic_pattern: np.ndarray):
+    """Regression Test 4: Known (12, 16) translation produces approximately 20 px magnitude."""
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    tp0 = tracker.track(synthetic_pattern)
+    k0 = estimator.update(tp0, timestamp=0.0)
+
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 12], [0, 1, 16]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    tp1 = tracker.track(shifted)
+    k1 = estimator.update(tp1, timestamp=0.033)
+
+    assert k1.dx_pixels == pytest.approx(12.0, abs=0.5)
+    assert k1.dy_pixels == pytest.approx(16.0, abs=0.5)
+    assert k1.cum_displacement_pixels == pytest.approx(20.0, abs=0.5)
+
+
+def test_repeated_identical_frames_do_not_accumulate(synthetic_pattern: np.ndarray):
+    """Regression Test 5: Repeated identical frames do not accumulate displacement."""
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    # Frame 0: Baseline
+    tp0 = tracker.track(synthetic_pattern)
+    k0 = estimator.update(tp0, timestamp=0.0)
+
+    # Frame 1: Shift by 10 px
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 10], [0, 1, 0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    tp1 = tracker.track(shifted)
+    k1 = estimator.update(tp1, timestamp=0.033)
+    assert k1.cum_displacement_pixels == pytest.approx(10.0, abs=0.4)
+
+    # Feed the exact same frame 100 times
+    for idx in range(2, 102):
+        t = idx * 0.033
+        tp_same = tracker.track(shifted)
+        k_same = estimator.update(tp_same, timestamp=t)
+        # Displacement MUST NOT accumulate to 1000 px! It must stay at ~10 px!
+        assert k_same.cum_displacement_pixels == pytest.approx(10.0, abs=0.5)
+        # Velocity must be approximately 0 because the frame is identical
+        assert k_same.velocity_magnitude_pixels_s == pytest.approx(0.0, abs=1.0)
+
+
+def test_long_stationary_sequence_does_not_grow_to_thousands(synthetic_pattern: np.ndarray):
+    """Regression Test 6: Long stationary sequence (300 frames) does not grow to thousands of pixels."""
+    tracker = OpticalFeatureTracker()
+    estimator = OpticalMotionEstimator()
+
+    for idx in range(300):
+        t = idx * 0.033
+        tp = tracker.track(synthetic_pattern)
+        k = estimator.update(tp, timestamp=t)
+        assert k.cum_displacement_pixels < 0.1
+        assert k.measurement_valid is True
+
+    # Absolutely cannot be 23,517 px!
+    assert k.cum_displacement_pixels < 0.1
+
+
+def test_feature_redetection_does_not_create_displacement_jump(synthetic_pattern: np.ndarray):
+    """Regression Test 7: Feature re-detection does not create a displacement jump."""
+    tracker = OpticalFeatureTracker(TrackerConfig(min_tracked_points=15))
+    estimator = OpticalMotionEstimator()
+
+    # Frame 0: Baseline
+    tracker.track(synthetic_pattern)
+    estimator.update(tracker.track(synthetic_pattern), timestamp=0.0)
+
+    # Shift by 15 px
+    h, w = synthetic_pattern.shape[:2]
+    M = np.float32([[1, 0, 15], [0, 1, 0]])
+    shifted = cv2.warpAffine(synthetic_pattern, M, (w, h))
+
+    t_before = tracker.track(shifted)
+    k_before = estimator.update(t_before, timestamp=0.033)
+    disp_before = k_before.dx_pixels
+    assert disp_before == pytest.approx(15.0, abs=0.5)
+
+    # Simulate feature drop triggering re-detection
+    tracker.tracked_pts = tracker.tracked_pts[:3]
+    t_redetect = tracker.track(shifted)
+    assert t_redetect.redetected is True
+    k_after = estimator.update(t_redetect, timestamp=0.066)
+
+    # Step discontinuity across re-detection must be negligible (< 0.5 px)
+    assert abs(k_after.dx_pixels - disp_before) < 0.5
+
+
+def test_background_features_do_not_contaminate_structural_displacement():
+    """Regression Test 8: Features outside the structural ROI do not contaminate structural motion."""
+    # 400x400 image. ROI is (50, 50, 100, 100)
+    tracker = OpticalFeatureTracker(roi=(50, 50, 100, 100))
+    img = np.full((400, 400), 200, dtype=np.uint8)
+
+    # Put specimen corners inside ROI
+    for r in range(60, 140, 20):
+        for c in range(60, 140, 20):
+            img[r : r + 10, c : c + 10] = 20
+
+    # Put background corners far outside ROI
+    for r in range(250, 350, 25):
+        for c in range(250, 350, 25):
+            img[r : r + 10, c : c + 10] = 20
+
+    t0 = tracker.track(img)
+    # Verify all detected features are strictly inside ROI
+    assert t0.valid_count > 0
+    for pt in t0.curr_pts:
+        assert 50 <= pt[0] <= 150
+        assert 50 <= pt[1] <= 150
+
+
+def test_displacement_and_velocity_mathematically_consistent():
+    """Regression Test 9: Displacement and velocity refer to the same coordinate system."""
+    estimator = OpticalMotionEstimator()
+
+    # Sequence where object moves from 0 to 10 to 20 then stays at 20
+    positions = [0.0, 10.0, 20.0, 20.0, 20.0]
+    dt = 0.1
+
+    for idx, pos in enumerate(positions):
+        t = idx * dt
+        tp = TrackedPoints(
+            prev_pts=np.array([[0, 0]], dtype=np.float32),
+            curr_pts=np.array([[pos, 0]], dtype=np.float32),
+            displacements=np.array([[pos, 0]], dtype=np.float32),
+            status=np.ones(1, dtype=bool),
+            valid_count=1,
+            tracking_quality="GOOD",
+            quality_score=1.0,
+        )
+        k = estimator.update(tp, timestamp=t)
+
+        if idx == 1:
+            # Moved from 0 to 10 in 0.1s -> v = 100 px/s
+            assert k.velocity_x_pixels_s == pytest.approx(100.0, abs=1e-2)
+            assert k.cum_displacement_pixels == pytest.approx(10.0, abs=1e-2)
+        elif idx == 3:
+            # Position stayed at 20 -> v = 0 px/s
+            assert k.velocity_x_pixels_s == pytest.approx(0.0, abs=1e-2)
+            assert k.cum_displacement_pixels == pytest.approx(20.0, abs=1e-2)
+
+
+def test_impossible_displacement_marked_invalid():
+    """Regression Test 10: Impossible displacement (> frame dimensions or jump) is marked invalid."""
+    estimator = OpticalMotionEstimator(frame_width=1280, frame_height=720, max_step_disp=80.0)
+
+    # Frame 1: Valid initial displacement
+    tp1 = TrackedPoints(
+        prev_pts=np.array([[0, 0]], dtype=np.float32),
+        curr_pts=np.array([[10, 0]], dtype=np.float32),
+        displacements=np.array([[10, 0]], dtype=np.float32),
+        status=np.ones(1, dtype=bool),
+        valid_count=1,
+        tracking_quality="GOOD",
+        quality_score=1.0,
+    )
+    k1 = estimator.update(tp1, timestamp=0.0)
+    assert k1.measurement_valid is True
+
+    # Frame 2: Teleportation of 23,517 px (the observed live bug!)
+    tp_bug = TrackedPoints(
+        prev_pts=np.array([[0, 0]], dtype=np.float32),
+        curr_pts=np.array([[23517, 0]], dtype=np.float32),
+        displacements=np.array([[23517, 0]], dtype=np.float32),
+        status=np.ones(1, dtype=bool),
+        valid_count=1,
+        tracking_quality="GOOD",
+        quality_score=1.0,
+    )
+    k2 = estimator.update(tp_bug, timestamp=0.033)
+    assert k2.measurement_valid is False
+    assert k2.validity_reason in ("EXCEEDS_FRAME_BOUNDS", "EXCESSIVE_STEP_DISPLACEMENT")
+
+
+def test_frequency_not_calculated_from_invalid_samples():
+    """Regression Test 11: Dominant frequency is not computed when history contains invalid samples."""
+    estimator = OpticalMotionEstimator(history_len=100)
+
+    # Feed 40 frames of sine wave but with 5 invalid frames in between
+    for idx in range(40):
+        t = idx * 0.033
+        disp = 10.0 * np.sin(2.0 * np.pi * 3.0 * t)
+        if 20 <= idx < 25:
+            disp = 5000.0  # Invalid frame
+        tp = TrackedPoints(
+            prev_pts=np.array([[0, 0]], dtype=np.float32),
+            curr_pts=np.array([[disp, 0]], dtype=np.float32),
+            displacements=np.array([[disp, 0]], dtype=np.float32),
+            status=np.ones(1, dtype=bool),
+            valid_count=1,
+            tracking_quality="GOOD",
+            quality_score=1.0,
+        )
+        k = estimator.update(tp, timestamp=t)
+
+    # Because invalid frames exist in recent window, frequency must be NaN
+    assert np.isnan(k.dominant_frequency_hz)
+
