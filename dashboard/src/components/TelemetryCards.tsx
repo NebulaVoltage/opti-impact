@@ -73,26 +73,26 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                 </div>
             </div>
 
-            {/* 5. Active Features Card */}
+            {/* 5. Active Inlier Features Card */}
             <div className="telemetry-card">
-                <div className="card-label">TRACKED FEATURES</div>
-                <div className="card-value">
-                    {telemetry.featureCount}
+                <div className="card-label">OPTICAL INLIERS</div>
+                <div className="card-value highlight-cyan">
+                    {telemetry.inlierCount}
                     <span className="card-unit"> / 50</span>
                 </div>
                 <div className="card-subtext">
-                    Shi–Tomasi corner persistence
+                    {telemetry.retentionRate.toFixed(1)}% retention rate ({telemetry.rejectedCount} rejected)
                 </div>
             </div>
 
-            {/* 6. Tracking Quality Card */}
+            {/* 6. Tracking Confidence Card */}
             <div className="telemetry-card">
-                <div className="card-label">TRACKING QUALITY</div>
+                <div className="card-label">TRACKING CONFIDENCE</div>
                 <div className={`card-value ${trackingColor}`}>
-                    {telemetry.trackingQuality}
+                    {(telemetry.confidence * 100).toFixed(1)}%
                 </div>
                 <div className="card-subtext">
-                    Feature retention status
+                    Quality: {telemetry.trackingQuality} &bull; MAD: &plusmn;{telemetry.madX.toFixed(2)} mm
                 </div>
             </div>
 

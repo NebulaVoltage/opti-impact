@@ -12,7 +12,8 @@ export type MeasurementStatus =
     | "VALID"
     | "EXCESSIVE_STEP_DISPLACEMENT"
     | "EXCEEDS_FRAME_BOUNDS"
-    | "TRACKING_LOST";
+    | "TRACKING_LOST"
+    | "LOW_CONFIDENCE";
 
 export type ScenarioType = "NORMAL" | "WARNING" | "CRITICAL";
 
@@ -23,6 +24,7 @@ export interface FeaturePoint {
     currX: number; // current animated position percentage
     currY: number;
     valid: boolean;
+    rejectionReason?: "FB_ERROR" | "MAD_OUTLIER" | "FRAME_BOUNDS" | null;
 }
 
 export interface VisionTelemetry {
@@ -43,14 +45,22 @@ export interface VisionTelemetry {
     dominantFrequency: number; // Hz: resonant structural oscillation frequency
 
     featureCount: number; // number of actively tracked optical features
+    inlierCount: number; // number of features passing bidirectional LK + MAD filter
+    forwardValidCount: number; // features passing forward LK
+    backwardValidCount: number; // features passing backward LK
+    rejectedCount: number; // features rejected by FB error or MAD filter
+    retentionRate: number; // percentage of detected features retained [0 - 100%]
+
+    confidence: number; // normalized tracking confidence score [0.0 - 1.0]
+    madX: number; // Median Absolute Deviation in X (mm)
+    madY: number; // Median Absolute Deviation in Y (mm)
 
     trackingQuality: TrackingQuality;
-
     measurementValid: boolean;
-
     measurementStatus: MeasurementStatus;
 
     scenario: ScenarioType;
+    autoScenarioActive: boolean;
 
     // Feature point coordinates for 2D optical visualizer
     features: FeaturePoint[];

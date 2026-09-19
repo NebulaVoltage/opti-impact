@@ -600,3 +600,379 @@ body {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* ==========================================================================
+   UPGRADE STEP 6A.2: KINEMATICS MODE TOGGLE & OPTICAL AUDIT PANELS
+   ========================================================================== */
+
+/* Kinematics Mode Switcher */
+.mode-toggle-group {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-surface-elevated);
+    padding: 3px;
+    border-radius: 4px;
+    border: 1px solid var(--border-dim);
+}
+
+.btn-mode {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-mode:hover {
+    color: var(--text-primary);
+}
+
+.btn-mode.active {
+    background: #1e293b;
+    color: var(--accent-cyan);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    box-shadow: 0 0 6px rgba(0, 212, 255, 0.15);
+}
+
+/* Optical Quality Panel */
+.optical-quality-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.quality-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.quality-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.quality-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--text-primary);
+}
+
+.quality-badge {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+/* Confidence Meter */
+.confidence-meter-container {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-dim);
+    border-radius: 5px;
+    padding: 10px 12px;
+}
+
+.meter-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.meter-label {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+}
+
+.meter-value {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.meter-value.conf-high { color: var(--accent-green); }
+.meter-value.conf-medium { color: var(--accent-orange); }
+.meter-value.conf-low { color: var(--accent-red); }
+
+.meter-bar-track {
+    width: 100%;
+    height: 9px;
+    background: #0f172a;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meter-bar-fill {
+    height: 100%;
+    transition: width 0.25s ease, background 0.3s ease;
+}
+
+.meter-bar-fill.conf-high {
+    background: linear-gradient(90deg, #10b981, #00ff66);
+    box-shadow: 0 0 8px rgba(0, 255, 102, 0.4);
+}
+
+.meter-bar-fill.conf-medium {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.meter-bar-fill.conf-low {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.meter-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-family: var(--font-mono);
+}
+
+/* Feature Audit Grid */
+.feature-audit-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.audit-card {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    padding: 7px 9px;
+    text-align: center;
+}
+
+.audit-card.highlight-inliers {
+    border-color: rgba(0, 255, 102, 0.4);
+    background: rgba(0, 255, 102, 0.04);
+}
+
+.audit-val {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.audit-label {
+    font-size: 8.5px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-top: 1px;
+}
+
+.audit-hint {
+    font-size: 7.5px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.text-vivid-green { color: #00ff66 !important; }
+
+/* Quality Submeta Row */
+.quality-submeta-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px 12px;
+    background: var(--bg-surface-elevated);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 9.5px;
+}
+
+.submeta-item {
+    display: flex;
+    justify-content: space-between;
+}
+
+.submeta-label {
+    color: var(--text-muted);
+}
+
+.submeta-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
+/* Auto Scenario Button & Pulse */
+.btn-auto-scenario {
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+.btn-auto-scenario.active-auto {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.25);
+}
+
+.auto-pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    margin-bottom: 4px;
+    display: inline-block;
+}
+
+.auto-pulse-dot.pulsing {
+    background: var(--accent-cyan);
+    animation: autoPulse 1.2s infinite ease-in-out;
+}
+
+@keyframes autoPulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(0, 212, 255, 0);
+    }
+    50% {
+        transform: scale(1.4);
+        box-shadow: 0 0 8px rgba(0, 212, 255, 0.8);
+    }
+}
+
+/* Optics Educational Panel */
+.optics-educational-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-top: 10px;
+}
+
+.edu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.edu-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.edu-icon {
+    font-size: 14px;
+}
+
+.edu-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--text-primary);
+}
+
+.edu-toggle-btn {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    background: rgba(0, 212, 255, 0.1);
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 212, 255, 0.25);
+}
+
+.edu-content {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.edu-intro-text {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.edu-steps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 900px) {
+    .edu-steps-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.edu-step-card {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    padding: 8px 10px;
+    display: flex;
+    gap: 8px;
+}
+
+.step-num-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-gold);
+    font-family: var(--font-mono);
+    padding-top: 1px;
+}
+
+.step-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.step-title {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.step-detail {
+    font-size: 8.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.edu-notice {
+    font-size: 9px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-dim);
+    padding-top: 8px;
+    font-style: italic;
+}
+
+.edu-notice code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+}
+
+.dot-rejected {
+    background: #ff3b30;
+    box-shadow: 0 0 5px #ff3b30;
+}

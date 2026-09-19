@@ -5,12 +5,13 @@ The **Vision-Only Structural Monitoring Dashboard** is a standalone, browser-bas
 
 It provides real-time visualization of:
 - Structural displacement ($x$, $y$, magnitude)
-- Velocity and acceleration kinematics
-- Dominant structural modal frequency evolution
-- Feature tracking counts and quality indicators
-- Measurement validity status
-- Real-time 2D animated cardboard specimen oscillation with visual feature points and motion vectors
-- Scenario simulation controls (`NORMAL`, `WARNING`, `CRITICAL`) and timestamped event logs
+- Multi-mode kinematics switcher: Displacement ($\text{mm}$), Velocity ($\text{mm/s}$), Acceleration ($\text{m/s}^2$)
+- Simulated Confidence & Optical Quality Panel (Confidence meter $0-100\%$, inliers, rejection breakdown, MAD dispersion)
+- Dominant structural modal frequency evolution with scenario reference bands
+- 2D structural box-beam specimen on fixed and roller support piers with camera framing HUD ($1280 \times 720$)
+- Shi–Tomasi corner inliers, FB/MAD rejected points, and dynamic Lucas–Kanade velocity flow vectors
+- Educational optics panel explaining camera framing, corner tracking, bidirectional LK flow, MAD filtering, and FFT modal resonance
+- Scenario controls (`NORMAL`, `WARNING`, `CRITICAL`), Auto-Scenario sequencing mode, and timestamped event logs
 
 > **SAFETY & SCIENTIFIC DISCLAIMER**:
 > This dashboard operates in **SIMULATION MODE ONLY**. All data, waveforms, frequencies, and scenarios are synthetic, physics-inspired engineering simulations. They are **NOT** real bridge measurements, **NOT** safety-certified thresholds, and **NOT** evidence of structural damage detection or safety certification. The dashboard labels reflect *Simulated structural response states*, not real-world structural health assessments.
@@ -21,7 +22,7 @@ It provides real-time visualization of:
 
 ```
 dashboard/
-├── index.html                   # HTML entry point with dark theme
+├── index.html                   # HTML entry point with dark technical theme
 ├── package.json                 # React 19, Lucide React, TypeScript, Vite, Vitest
 ├── tsconfig.json                # Strict TypeScript configuration
 ├── vite.config.ts               # Vite bundler configuration
@@ -30,14 +31,16 @@ dashboard/
     │   └── telemetry.ts         # Strict TypeScript schemas for telemetry and events
     ├── simulation/
     │   ├── scenarios.ts         # Parameter profiles for NORMAL, WARNING, CRITICAL
-    │   ├── visionSimulator.ts   # Deterministic 30 FPS physics simulator
-    │   └── visionSimulator.test.ts # Vitest unit test suite (12 comprehensive tests)
+    │   ├── visionSimulator.ts   # Deterministic 30 FPS physics simulator with auto-cycling
+    │   └── visionSimulator.test.ts # Vitest unit test suite (16 comprehensive tests)
     ├── components/
-    │   ├── StructuralViewer.tsx # 2D Canvas rendering specimen oscillation & optical features
+    │   ├── StructuralViewer.tsx # 2D Canvas rendering specimen oscillation, piers, and flow vectors
     │   ├── TelemetryCards.tsx   # Real-time engineering metric display cards
-    │   ├── DisplacementChart.tsx# 10-second scrolling displacement waveform canvas
-    │   ├── FrequencyChart.tsx   # Dominant frequency gauge and 15-second modal trend line
-    │   ├── ScenarioControls.tsx # NORMAL/WARNING/CRITICAL & Playback controls
+    │   ├── OpticalQualityPanel.tsx # Step 6A.1-P precision audit metrics & confidence meter
+    │   ├── DisplacementChart.tsx# Multi-mode kinematics scrolling waveform (disp / vel / accel)
+    │   ├── FrequencyChart.tsx   # Dominant frequency gauge and modal trend line with threshold bands
+    │   ├── ScenarioControls.tsx # NORMAL/WARNING/CRITICAL, Auto Sequence & Playback controls
+    │   ├── OpticsEducationalPanel.tsx # Step-by-step explainer of optical vision sensing
     │   ├── EventTimeline.tsx    # Scrollable timestamped event log
     │   └── OpticalSensorIndicator.tsx # Virtual sensor specs & active mode badge
     ├── App.tsx                  # Root dashboard layout and telemetry state wiring
@@ -128,7 +131,7 @@ npm run dev
 
 ### Running Tests
 ```bash
-# Execute Vitest unit test suite (12 tests)
+# Execute Vitest unit test suite (16 tests)
 npm test
 ```
 

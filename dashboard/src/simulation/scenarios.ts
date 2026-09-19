@@ -14,6 +14,9 @@ export interface ScenarioProfile {
     targetDisplacement: number; // mm
     targetFrequency: number; // Hz
     baseFeatureCount: number;
+    nominalConfidence: number; // [0.0 - 1.0]
+    nominalRetention: number; // %
+    nominalMad: number; // mm
     nominalTrackingQuality: TrackingQuality;
     nominalMeasurementStatus: MeasurementStatus;
     dampingRatio: number;
@@ -28,6 +31,9 @@ export const SCENARIO_PROFILES: Record<ScenarioType, ScenarioProfile> = {
         targetDisplacement: 0.65, // mm (~0.2-1.0 mm)
         targetFrequency: 5.15, // Hz (~4.6-5.4 Hz)
         baseFeatureCount: 46, // (~25-60)
+        nominalConfidence: 0.96,
+        nominalRetention: 95.0,
+        nominalMad: 0.04,
         nominalTrackingQuality: "GOOD",
         nominalMeasurementStatus: "VALID",
         dampingRatio: 0.05,
@@ -40,6 +46,9 @@ export const SCENARIO_PROFILES: Record<ScenarioType, ScenarioProfile> = {
         targetDisplacement: 2.85, // mm (~1.0-5.0 mm)
         targetFrequency: 4.30, // Hz (~3.9-4.8 Hz)
         baseFeatureCount: 32, // (~15-50)
+        nominalConfidence: 0.82,
+        nominalRetention: 78.0,
+        nominalMad: 0.12,
         nominalTrackingQuality: "GOOD",
         nominalMeasurementStatus: "VALID",
         dampingRatio: 0.04,
@@ -52,6 +61,9 @@ export const SCENARIO_PROFILES: Record<ScenarioType, ScenarioProfile> = {
         targetDisplacement: 11.20, // mm (~5.0-20.0 mm)
         targetFrequency: 3.50, // Hz (~3.0-4.1 Hz)
         baseFeatureCount: 15, // (~5-35)
+        nominalConfidence: 0.54,
+        nominalRetention: 48.0,
+        nominalMad: 0.38,
         nominalTrackingQuality: "DEGRADED",
         nominalMeasurementStatus: "VALID",
         dampingRatio: 0.03,

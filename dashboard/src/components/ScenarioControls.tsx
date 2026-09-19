@@ -3,8 +3,10 @@ import type { ScenarioType } from "../types/telemetry";
 
 interface ScenarioControlsProps {
     currentScenario: ScenarioType;
+    autoScenarioActive: boolean;
     isRunning: boolean;
     onSelectScenario: (scenario: ScenarioType) => void;
+    onToggleAutoScenario: () => void;
     onStart: () => void;
     onPause: () => void;
     onReset: () => void;
@@ -12,8 +14,10 @@ interface ScenarioControlsProps {
 
 export const ScenarioControls: React.FC<ScenarioControlsProps> = ({
     currentScenario,
+    autoScenarioActive,
     isRunning,
     onSelectScenario,
+    onToggleAutoScenario,
     onStart,
     onPause,
     onReset,
@@ -48,6 +52,16 @@ export const ScenarioControls: React.FC<ScenarioControlsProps> = ({
                         <span className="btn-indicator indicator-critical"></span>
                         CRITICAL
                         <span className="btn-detail">~11.2 mm | 3.50 Hz</span>
+                    </button>
+
+                    <button
+                        className={`btn-scenario btn-auto-scenario ${autoScenarioActive ? "active-auto" : ""}`}
+                        onClick={onToggleAutoScenario}
+                        title="Automatically sequences through Normal (10s) -> Warning (8s) -> Critical (6s) -> Warning (8s)"
+                    >
+                        <span className={`auto-pulse-dot ${autoScenarioActive ? "pulsing" : ""}`}></span>
+                        AUTO SEQUENCE
+                        <span className="btn-detail">{autoScenarioActive ? "ACTIVE (32s LOOP)" : "DISABLED"}</span>
                     </button>
                 </div>
             </div>

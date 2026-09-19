@@ -3,11 +3,13 @@ import { VisionSimulator } from "./simulation/visionSimulator";
 import type { VisionTelemetry, ScenarioType, SimulationEvent } from "./types/telemetry";
 import { StructuralViewer } from "./components/StructuralViewer";
 import { TelemetryCards } from "./components/TelemetryCards";
+import { OpticalQualityPanel } from "./components/OpticalQualityPanel";
 import { DisplacementChart } from "./components/DisplacementChart";
 import { FrequencyChart } from "./components/FrequencyChart";
 import { ScenarioControls } from "./components/ScenarioControls";
 import { EventTimeline } from "./components/EventTimeline";
 import { OpticalSensorIndicator } from "./components/OpticalSensorIndicator";
+import { OpticsEducationalPanel } from "./components/OpticsEducationalPanel";
 
 export const App: React.FC = () => {
     const simulatorRef = useRef<VisionSimulator | null>(null);
@@ -15,6 +17,7 @@ export const App: React.FC = () => {
     const [events, setEvents] = useState<SimulationEvent[]>([]);
     const [isRunning, setIsRunning] = useState<boolean>(true);
     const [currentScenario, setCurrentScenario] = useState<ScenarioType>("NORMAL");
+    const [autoScenarioActive, setAutoScenarioActive] = useState<boolean>(false);
 
     useEffect(() => {
         const sim = new VisionSimulator();
@@ -23,6 +26,7 @@ export const App: React.FC = () => {
         const unsubTel = sim.subscribeTelemetry((t) => {
             setTelemetry(t);
             setCurrentScenario(t.scenario);
+            setAutoScenarioActive(t.autoScenarioActive);
         });
 
         const unsubEvt = sim.subscribeEvents((e) => {
@@ -43,6 +47,14 @@ export const App: React.FC = () => {
         if (simulatorRef.current) {
             simulatorRef.current.setScenario(sc);
             setCurrentScenario(sc);
+            setAutoScenarioActive(simulatorRef.current.getAutoScenario());
+        }
+    };
+
+    const handleToggleAutoScenario = () => {
+        if (simulatorRef.current) {
+            const active = simulatorRef.current.toggleAutoScenario();
+            setAutoScenarioActive(active);
         }
     };
 
@@ -79,7 +91,7 @@ export const App: React.FC = () => {
                     <div className="header-titles">
                         <h1 className="header-title">OPTICAL STRUCTURAL IMPACT MONITORING</h1>
                         <span className="header-subtitle">
-                            VISION-ONLY SIMULATION MODE &bull; REACTION KINEMATICS
+                            VISION-ONLY SIMULATION MODE &bull; PHYSICAL KINEMATICS ENGINE
                         </span>
                     </div>
                 </div>
@@ -106,15 +118,17 @@ export const App: React.FC = () => {
 
             {/* 2. Main Content Grid */}
             <main className="dashboard-main-grid">
-                {/* Left Column: Visual Structural Representation & Scrolling Waveform */}
+                {/* Left Column: Visual Structural Representation & Scrolling Kinematics Waveform */}
                 <section className="main-left-column">
                     <StructuralViewer telemetry={telemetry} />
                     <DisplacementChart telemetry={telemetry} />
+                    <OpticsEducationalPanel />
                 </section>
 
-                {/* Right Column: Telemetry Cards, Optical Sensor Specs, Frequency Trend, Event Log */}
+                {/* Right Column: Telemetry Cards, Optical Quality Breakdown, Frequency Trend, Event Log */}
                 <section className="main-right-column">
                     <TelemetryCards telemetry={telemetry} />
+                    <OpticalQualityPanel telemetry={telemetry} />
 
                     <div className="right-subgrid">
                         <FrequencyChart telemetry={telemetry} />
@@ -129,8 +143,10 @@ export const App: React.FC = () => {
             <section className="dashboard-controls-section">
                 <ScenarioControls
                     currentScenario={currentScenario}
+                    autoScenarioActive={autoScenarioActive}
                     isRunning={isRunning}
                     onSelectScenario={handleSelectScenario}
+                    onToggleAutoScenario={handleToggleAutoScenario}
                     onStart={handleStart}
                     onPause={handlePause}
                     onReset={handleReset}

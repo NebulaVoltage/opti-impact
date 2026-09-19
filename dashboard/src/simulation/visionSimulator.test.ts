@@ -162,10 +162,19 @@ describe("VisionSimulator Tests", () => {
             "accelerationMagnitude",
             "dominantFrequency",
             "featureCount",
+            "inlierCount",
+            "forwardValidCount",
+            "backwardValidCount",
+            "rejectedCount",
+            "retentionRate",
+            "confidence",
+            "madX",
+            "madY",
             "trackingQuality",
             "measurementValid",
             "measurementStatus",
             "scenario",
+            "autoScenarioActive",
             "features",
         ];
 
@@ -174,5 +183,73 @@ describe("VisionSimulator Tests", () => {
         }
         expect(Array.isArray(tel.features)).toBe(true);
         expect(tel.features.length).toBe(50);
+    });
+
+    it("13. confidence score remains within [0.0, 1.0] and reflects scenario degradation", () => {
+        simulator.setScenario("NORMAL");
+        for (let i = 0; i < 30; i++) simulator.step(0.033);
+        const normConf = simulator.getTelemetry().confidence;
+        expect(normConf).toBeGreaterThanOrEqual(0.85);
+        expect(normConf).toBeLessThanOrEqual(1.0);
+
+        simulator.setScenario("CRITICAL");
+        for (let i = 0; i < 100; i++) simulator.step(0.033);
+        const critConf = simulator.getTelemetry().confidence;
+        expect(critConf).toBeLessThan(normConf);
+        expect(critConf).toBeGreaterThanOrEqual(0.2);
+    });
+
+    it("14. inliers and retention rate are mathematically consistent", () => {
+        for (let i = 0; i < 40; i++) {
+            const tel = simulator.step(0.033);
+            expect(tel.inlierCount + tel.rejectedCount).toBe(50);
+            expect(tel.retentionRate).toBeCloseTo((tel.inlierCount / 50) * 100.0, 1);
+            expect(tel.inlierCount).toBeLessThanOrEqual(tel.forwardValidCount);
+            expect(tel.backwardValidCount).toBeLessThanOrEqual(tel.forwardValidCount);
+        }
+    });
+
+    it("15. auto scenario automatically transitions scenarios over time", () => {
+        simulator.setAutoScenario(true);
+        expect(simulator.getAutoScenario()).toBe(true);
+
+        // At t=0, starts in NORMAL
+        let tel = simulator.step(1.0);
+        expect(tel.scenario).toBe("NORMAL");
+        expect(tel.autoScenarioActive).toBe(true);
+
+        // Advance to t=12s -> should be in WARNING (10s threshold)
+        for (let i = 0; i < 11; i++) {
+            tel = simulator.step(1.0);
+        }
+        expect(tel.scenario).toBe("WARNING");
+
+        // Advance to t=20s -> should be in CRITICAL (18s threshold)
+        for (let i = 0; i < 8; i++) {
+            tel = simulator.step(1.0);
+        }
+        expect(tel.scenario).toBe("CRITICAL");
+
+        // Advance to t=26s -> should be back in WARNING (24s threshold)
+        for (let i = 0; i < 6; i++) {
+            tel = simulator.step(1.0);
+        }
+        expect(tel.scenario).toBe("WARNING");
+
+        // Manual override disengages auto scenario
+        simulator.setScenario("NORMAL");
+        expect(simulator.getAutoScenario()).toBe(false);
+    });
+
+    it("16. rejected feature points provide audit rejection reasons", () => {
+        simulator.setScenario("CRITICAL");
+        for (let i = 0; i < 100; i++) simulator.step(0.033);
+        const tel = simulator.getTelemetry();
+
+        const rejected = tel.features.filter((f) => !f.valid);
+        expect(rejected.length).toBeGreaterThan(0);
+        for (const pt of rejected) {
+            expect(["FB_ERROR", "MAD_OUTLIER", "FRAME_BOUNDS"]).toContain(pt.rejectionReason);
+        }
     });
 });

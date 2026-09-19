@@ -51,8 +51,26 @@ export const FrequencyChart: React.FC<FrequencyChartProps> = ({ telemetry }) => 
         const minY = 2.5;
         const maxY = 6.0;
 
-        // Draw horizontal gridlines
-        ctx.strokeStyle = "rgba(40, 55, 75, 0.4)";
+        const getYForFreq = (f: number): number => {
+            const clamped = Math.max(minY, Math.min(maxY, f));
+            return padTop + plotH - ((clamped - minY) / (maxY - minY)) * plotH;
+        };
+
+        // Draw Scenario Reference Modal Bands
+        // Normal band (4.6 - 5.4 Hz)
+        ctx.fillStyle = "rgba(52, 199, 89, 0.08)";
+        ctx.fillRect(padLeft, getYForFreq(5.4), plotW, getYForFreq(4.6) - getYForFreq(5.4));
+
+        // Warning band (3.9 - 4.6 Hz)
+        ctx.fillStyle = "rgba(255, 149, 0, 0.08)";
+        ctx.fillRect(padLeft, getYForFreq(4.6), plotW, getYForFreq(3.9) - getYForFreq(4.6));
+
+        // Critical band (2.8 - 3.9 Hz)
+        ctx.fillStyle = "rgba(255, 59, 48, 0.08)";
+        ctx.fillRect(padLeft, getYForFreq(3.9), plotW, getYForFreq(2.8) - getYForFreq(3.9));
+
+        // Draw horizontal gridlines & labels
+        ctx.strokeStyle = "rgba(40, 55, 75, 0.45)";
         ctx.lineWidth = 1;
         ctx.fillStyle = "#7085a0";
         ctx.font = "10px 'JetBrains Mono', monospace";
@@ -60,7 +78,7 @@ export const FrequencyChart: React.FC<FrequencyChartProps> = ({ telemetry }) => 
 
         const fSteps = [3.0, 4.0, 5.0, 6.0];
         for (const f of fSteps) {
-            const y = padTop + plotH - ((f - minY) / (maxY - minY)) * plotH;
+            const y = getYForFreq(f);
             ctx.beginPath();
             ctx.moveTo(padLeft, y);
             ctx.lineTo(w - padRight, y);
@@ -73,14 +91,13 @@ export const FrequencyChart: React.FC<FrequencyChartProps> = ({ telemetry }) => 
         const tStart = telemetry.timestamp - windowDuration;
         if (history.length >= 2) {
             ctx.strokeStyle = "#ffcc00";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 2.2;
             ctx.beginPath();
 
             history.forEach((pt, idx) => {
                 const fracX = (pt.time - tStart) / windowDuration;
                 const x = padLeft + Math.max(0, Math.min(1, fracX)) * plotW;
-                const fracY = (pt.freq - minY) / (maxY - minY);
-                const y = padTop + plotH - Math.max(0, Math.min(1, fracY)) * plotH;
+                const y = getYForFreq(pt.freq);
 
                 if (idx === 0) {
                     ctx.moveTo(x, y);
@@ -93,13 +110,15 @@ export const FrequencyChart: React.FC<FrequencyChartProps> = ({ telemetry }) => 
             const lastPt = history[history.length - 1];
             const lastFracX = (lastPt.time - tStart) / windowDuration;
             const lastX = padLeft + Math.max(0, Math.min(1, lastFracX)) * plotW;
-            const lastFracY = (lastPt.freq - minY) / (maxY - minY);
-            const lastY = padTop + plotH - Math.max(0, Math.min(1, lastFracY)) * plotH;
+            const lastY = getYForFreq(lastPt.freq);
 
             ctx.beginPath();
-            ctx.arc(lastX, lastY, 3.5, 0, 2 * Math.PI);
+            ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI);
             ctx.fillStyle = "#ffdd44";
             ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
         }
     }, [telemetry]);
 
