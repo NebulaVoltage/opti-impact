@@ -976,3 +976,659 @@ body {
     background: #ff3b30;
     box-shadow: 0 0 5px #ff3b30;
 }
+
+/* ============================================================
+   STEP 6A.3 — LIVE OPTICAL CAMERA & PROFESSIONAL ANALYSIS STYLES
+   ============================================================ */
+
+/* 1. Operating Mode Selector */
+.operating-mode-selector {
+    display: flex;
+    align-items: center;
+    background: #0b101b;
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 3px;
+    gap: 4px;
+}
+
+.btn-operating-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-operating-mode:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-operating-mode.active {
+    background: #152238;
+    color: #ffffff;
+    border-color: rgba(0, 212, 255, 0.4);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+.btn-operating-mode.btn-live-mode.active {
+    border-color: rgba(0, 255, 136, 0.5);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
+}
+
+.mode-led {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.led-green {
+    background: #00ff88;
+    box-shadow: 0 0 6px #00ff88;
+}
+
+.led-cyan {
+    background: #00d4ff;
+    box-shadow: 0 0 6px #00d4ff;
+}
+
+/* 2. Subnav Bar & Analytics Tabs */
+.dashboard-subnav-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.analysis-tabs-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    background: #0c1322;
+    border: 1px solid var(--border-dim);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-cyan);
+}
+
+.tab-btn.active {
+    background: #172a45;
+    color: #00d4ff;
+    border-color: #00d4ff;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.2);
+}
+
+.subnav-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-action-pill {
+    background: #0e172a;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-action-pill:hover {
+    background: #1b2a4a;
+    border-color: var(--accent-cyan);
+}
+
+.btn-action-pill.pill-highlight {
+    background: rgba(255, 170, 0, 0.12);
+    border-color: rgba(255, 170, 0, 0.45);
+    color: #ffaa00;
+}
+
+.btn-action-pill.pill-highlight:hover {
+    background: rgba(255, 170, 0, 0.22);
+    border-color: #ffaa00;
+}
+
+/* 3. Live Camera View Panel */
+.live-camera-view-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 14px;
+}
+
+.camera-stream-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000000;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #1a2538;
+}
+
+.camera-stream-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.camera-hud-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 12px;
+}
+
+.camera-hud-top,
+.camera-hud-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(8, 12, 20, 0.75);
+    backdrop-filter: blur(4px);
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.hud-tag {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--accent-cyan);
+}
+
+.hud-status {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.hud-status.status-valid {
+    color: #00ff88;
+    background: rgba(0, 255, 136, 0.15);
+}
+
+.hud-status.status-invalid {
+    color: #ff4757;
+    background: rgba(255, 71, 87, 0.15);
+}
+
+.hud-metrics {
+    display: flex;
+    gap: 14px;
+}
+
+.hud-item {
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.hud-k {
+    color: var(--text-muted);
+}
+
+.hud-v {
+    color: #ffffff;
+    font-weight: 700;
+    margin-left: 4px;
+}
+
+.camera-offline-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 30px;
+    text-align: center;
+    background: radial-gradient(circle at center, #111b2c 0%, #060a12 100%);
+}
+
+.offline-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+
+.offline-title {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffaa00;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+.offline-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    max-width: 440px;
+    line-height: 1.5;
+    margin-bottom: 8px;
+}
+
+.offline-details {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #ff4757;
+    background: rgba(255, 71, 87, 0.1);
+    padding: 4px 10px;
+    border-radius: 3px;
+    margin-bottom: 16px;
+}
+
+.offline-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-offline-action {
+    background: #152238;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-offline-action:hover {
+    background: #203456;
+    border-color: var(--accent-cyan);
+}
+
+.btn-offline-action.primary {
+    background: #00d4ff;
+    color: #060a12;
+    border-color: #00d4ff;
+    font-weight: 700;
+}
+
+.btn-offline-action.primary:hover {
+    background: #38e1ff;
+}
+
+/* 4. Chart Controls, Time Window & Freeze */
+.chart-controls-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.time-window-toggle {
+    display: flex;
+    background: #080d18;
+    border: 1px solid var(--border-dim);
+    border-radius: 3px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.btn-toggle-sub {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-toggle-sub.active {
+    background: #182842;
+    color: #00d4ff;
+    font-weight: 700;
+}
+
+.btn-freeze {
+    background: #131d2e;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-freeze:hover {
+    background: #1f3050;
+    border-color: var(--accent-cyan);
+}
+
+.btn-freeze.frozen {
+    background: rgba(255, 170, 0, 0.2);
+    border-color: #ffaa00;
+    color: #ffaa00;
+}
+
+.chart-stats-strip {
+    display: flex;
+    gap: 18px;
+    padding: 6px 12px;
+    background: #0a0f1b;
+    border: 1px solid var(--border-dim);
+    border-radius: 3px;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.stat-k {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.stat-v {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+/* 5. Frequency Spectrum & Spectrogram Panels */
+.spectrum-chart-panel,
+.spectrogram-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 14px;
+}
+
+.spectrum-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.legend-tag {
+    color: #ffaa00;
+    font-weight: 700;
+}
+
+.legend-text {
+    color: var(--text-muted);
+}
+
+.spectrogram-info {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+}
+
+/* 6. Session Stats Panel */
+.session-stats-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 14px;
+}
+
+.btn-icon-sub {
+    background: #121c2e;
+    border: 1px solid var(--border-dim);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.btn-icon-sub:hover {
+    color: #ffffff;
+    border-color: var(--accent-cyan);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.stat-card-cell {
+    background: #090e18;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.stat-card-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.stat-card-value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.stat-card-value.highlight-good {
+    color: #00ff88;
+}
+
+.stat-card-value.highlight-cyan {
+    color: #00d4ff;
+}
+
+.stat-card-value.highlight-gold {
+    color: #ffaa00;
+}
+
+.stat-unit {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.stat-card-subtitle {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.session-note {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-style: italic;
+    border-top: 1px solid var(--border-dim);
+    padding-top: 6px;
+}
+
+/* 7. Baseline Deviation Panel */
+.baseline-deviation-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 14px;
+}
+
+.baseline-delta-card {
+    background: #090e18;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.delta-headline {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.delta-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.delta-val {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.baseline-status-msg {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+}
+
+.status-ok {
+    color: #00ff88;
+    background: rgba(0, 255, 136, 0.1);
+}
+
+.status-mod {
+    color: #ffaa00;
+    background: rgba(255, 170, 0, 0.12);
+}
+
+.status-sig {
+    color: #ff4757;
+    background: rgba(255, 71, 87, 0.15);
+}
+
+.baseline-details-row {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 6px;
+}
+
+.baseline-actions-group {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-panel-action {
+    background: #111a2c;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    flex: 1;
+    transition: all 0.15s;
+}
+
+.btn-panel-action:hover {
+    background: #1c2b48;
+    border-color: var(--accent-cyan);
+}
+
+.btn-panel-action.primary {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: rgba(0, 212, 255, 0.4);
+    color: #00d4ff;
+}
+
+.btn-panel-action.primary:hover {
+    background: rgba(0, 212, 255, 0.25);
+    border-color: #00d4ff;
+}
+
+/* 8. Live Event Banner */
+.live-event-banner {
+    background: #090e18;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.banner-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    margin-bottom: 4px;
+}
+
+.banner-desc {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}

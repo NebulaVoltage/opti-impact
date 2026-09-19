@@ -182,7 +182,7 @@ describe("VisionSimulator Tests", () => {
             expect(key in tel).toBe(true);
         }
         expect(Array.isArray(tel.features)).toBe(true);
-        expect(tel.features.length).toBe(50);
+        expect(tel.features!.length).toBe(50);
     });
 
     it("13. confidence score remains within [0.0, 1.0] and reflects scenario degradation", () => {
@@ -246,7 +246,7 @@ describe("VisionSimulator Tests", () => {
         for (let i = 0; i < 100; i++) simulator.step(0.033);
         const tel = simulator.getTelemetry();
 
-        const rejected = tel.features.filter((f) => !f.valid);
+        const rejected = tel.features!.filter((f) => !f.valid);
         expect(rejected.length).toBeGreaterThan(0);
         for (const pt of rejected) {
             expect(["FB_ERROR", "MAD_OUTLIER", "FRAME_BOUNDS"]).toContain(pt.rejectionReason);

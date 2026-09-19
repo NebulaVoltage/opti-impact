@@ -27,22 +27,28 @@ export interface FeaturePoint {
     rejectionReason?: "FB_ERROR" | "MAD_OUTLIER" | "FRAME_BOUNDS" | null;
 }
 
+export type OperatingMode = "LIVE" | "SIMULATION";
+export type AnalysisTab = "TIME_DOMAIN" | "FREQUENCY_DOMAIN" | "SPECTROGRAM" | "TRACKING_QUALITY" | "SESSION_STATS" | "ALL_VIEWS";
+
 export interface VisionTelemetry {
-    timestamp: number; // elapsed simulation time in seconds
+    timestamp: number; // elapsed time in seconds
 
-    displacementX: number; // mm (simulated structural displacement)
-    displacementY: number; // mm
-    displacementMagnitude: number; // mm: sqrt(dx² + dy²)
+    // Displacement
+    displacementX: number; // px in LIVE mode, mm in SIMULATION mode
+    displacementY: number;
+    displacementMagnitude: number;
 
-    velocityX: number; // mm/s: numerical dx/dt
-    velocityY: number; // mm/s
-    velocityMagnitude: number; // mm/s
+    // Velocity
+    velocityX: number; // px/s in LIVE mode, mm/s in SIMULATION mode
+    velocityY: number;
+    velocityMagnitude: number;
 
-    accelerationX: number; // m/s²: numerical d²x/dt²
-    accelerationY: number; // m/s²
-    accelerationMagnitude: number; // m/s²
+    // Acceleration
+    accelerationX: number; // px/s² in LIVE mode, m/s² in SIMULATION mode
+    accelerationY: number;
+    accelerationMagnitude: number;
 
-    dominantFrequency: number; // Hz: resonant structural oscillation frequency
+    dominantFrequency: number | null; // Hz: resonant oscillation frequency
 
     featureCount: number; // number of actively tracked optical features
     inlierCount: number; // number of features passing bidirectional LK + MAD filter
@@ -52,8 +58,8 @@ export interface VisionTelemetry {
     retentionRate: number; // percentage of detected features retained [0 - 100%]
 
     confidence: number; // normalized tracking confidence score [0.0 - 1.0]
-    madX: number; // Median Absolute Deviation in X (mm)
-    madY: number; // Median Absolute Deviation in Y (mm)
+    madX: number; // Median Absolute Deviation in X
+    madY: number; // Median Absolute Deviation in Y
 
     trackingQuality: TrackingQuality;
     measurementValid: boolean;
@@ -62,8 +68,91 @@ export interface VisionTelemetry {
     scenario: ScenarioType;
     autoScenarioActive: boolean;
 
-    // Feature point coordinates for 2D optical visualizer
-    features: FeaturePoint[];
+    // Units & Mode indicators
+    isLive?: boolean;
+    fps?: number;
+    unit?: "px" | "mm";
+    displayUnit?: "px" | "mm";
+    validityReason?: MeasurementStatus;
+    velocityUnit?: "px/s" | "mm/s";
+    accelerationUnit?: "px/s²" | "m/s²";
+
+    // FFT Spectrum data
+    fftFrequencies?: number[];
+    fftAmplitudes?: number[];
+    peakFrequencyHz?: number | null;
+    peakAmplitude?: number | null;
+
+    // Baseline response deviation
+    baselineFrequencyHz?: number | null;
+    frequencyDeviationHz?: number | null;
+
+    // Feature point coordinates for 2D optical visualizer (in simulation)
+    features?: FeaturePoint[];
+}
+
+export interface LiveTelemetryPacket {
+    timestamp: number;
+    fps: number;
+    frame_width: number;
+    frame_height: number;
+    displacement_x_px: number;
+    displacement_y_px: number;
+    displacement_magnitude_px: number;
+    velocity_x_px_s: number;
+    velocity_y_px_s: number;
+    velocity_magnitude_px_s: number;
+    acceleration_x_px_s2: number;
+    acceleration_y_px_s2: number;
+    acceleration_magnitude_px_s2: number;
+    dominant_frequency_hz: number | null;
+    feature_count: number;
+    inlier_feature_count: number;
+    rejected_feature_count: number;
+    retention_rate: number;
+    tracking_quality: TrackingQuality;
+    measurement_valid: boolean;
+    validity_reason: MeasurementStatus;
+    confidence: number;
+    mad_x_px: number;
+    mad_y_px: number;
+    baseline_frequency_hz?: number | null;
+    frequency_deviation_hz?: number | null;
+    fft_frequencies?: number[];
+    fft_amplitudes?: number[];
+    peak_frequency_hz?: number | null;
+    peak_amplitude?: number | null;
+    is_live: boolean;
+}
+
+export interface SessionStats {
+    startTime: number;
+    durationSeconds: number;
+    totalFrames: number;
+    validFrames: number;
+    invalidFrames: number;
+    validPercent: number;
+    avgFps: number;
+    peakDisplacement: number;
+    rmsDisplacement: number;
+    peakVelocity: number;
+    peakAcceleration: number;
+    meanConfidence: number;
+    minConfidence: number;
+    freqMean: number | null;
+    freqMedian: number | null;
+    freqMin: number | null;
+    freqMax: number | null;
+    freqStd: number | null;
+}
+
+export interface BaselineRecord {
+    timestamp: number;
+    baseline_frequency_hz: number | null;
+    baseline_displacement_mag_px: number;
+    baseline_velocity_mag_px_s: number;
+    baseline_confidence: number;
+    captured_at: string;
 }
 
 export interface SimulationEvent {

@@ -6,6 +6,11 @@ interface TelemetryCardsProps {
 }
 
 export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => {
+    const isLive = telemetry.isLive || false;
+    const dispUnit = telemetry.unit || (isLive ? "px" : "mm");
+    const velUnit = telemetry.velocityUnit || (isLive ? "px/s" : "mm/s");
+    const accelUnit = telemetry.accelerationUnit || (isLive ? "px/s²" : "m/s²");
+
     const trackingColor =
         telemetry.trackingQuality === "GOOD"
             ? "text-green"
@@ -15,12 +20,13 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
 
     const measurementColor = telemetry.measurementValid ? "text-green" : "text-red";
 
-    const scenarioBadgeClass =
-        telemetry.scenario === "CRITICAL"
-            ? "badge-critical"
-            : telemetry.scenario === "WARNING"
-            ? "badge-warning"
-            : "badge-normal";
+    const scenarioBadgeClass = isLive
+        ? "badge-live"
+        : telemetry.scenario === "CRITICAL"
+        ? "badge-critical"
+        : telemetry.scenario === "WARNING"
+        ? "badge-warning"
+        : "badge-normal";
 
     return (
         <div className="telemetry-cards-container">
@@ -29,11 +35,11 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                 <div className="card-label">OPTICAL DISPLACEMENT</div>
                 <div className="card-value highlight-cyan">
                     {telemetry.displacementMagnitude.toFixed(2)}
-                    <span className="card-unit"> mm</span>
+                    <span className="card-unit"> {dispUnit}</span>
                 </div>
                 <div className="card-subtext">
-                    X: {telemetry.displacementX > 0 ? "+" : ""}{telemetry.displacementX.toFixed(2)} mm &nbsp;|&nbsp;
-                    Y: {telemetry.displacementY > 0 ? "+" : ""}{telemetry.displacementY.toFixed(2)} mm
+                    X: {telemetry.displacementX > 0 ? "+" : ""}{telemetry.displacementX.toFixed(2)} {dispUnit} &nbsp;|&nbsp;
+                    Y: {telemetry.displacementY > 0 ? "+" : ""}{telemetry.displacementY.toFixed(2)} {dispUnit}
                 </div>
             </div>
 
@@ -42,10 +48,10 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                 <div className="card-label">OPTICAL VELOCITY</div>
                 <div className="card-value">
                     {telemetry.velocityMagnitude.toFixed(1)}
-                    <span className="card-unit"> mm/s</span>
+                    <span className="card-unit"> {velUnit}</span>
                 </div>
                 <div className="card-subtext">
-                    Numerical finite difference Δx / Δt
+                    Numerical derivative dx/dt
                 </div>
             </div>
 
@@ -54,10 +60,10 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                 <div className="card-label">OPTICAL ACCELERATION</div>
                 <div className="card-value">
                     {telemetry.accelerationMagnitude.toFixed(2)}
-                    <span className="card-unit"> m/s²</span>
+                    <span className="card-unit"> {accelUnit}</span>
                 </div>
                 <div className="card-subtext">
-                    Derived smoothed d²x / dt²
+                    Numerical derivative d²x/dt²
                 </div>
             </div>
 
@@ -65,7 +71,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
             <div className="telemetry-card">
                 <div className="card-label">DOMINANT FREQUENCY</div>
                 <div className="card-value highlight-gold">
-                    {telemetry.dominantFrequency.toFixed(2)}
+                    {telemetry.dominantFrequency !== null ? telemetry.dominantFrequency.toFixed(2) : "N/A"}
                     <span className="card-unit"> Hz</span>
                 </div>
                 <div className="card-subtext">
@@ -78,10 +84,10 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                 <div className="card-label">OPTICAL INLIERS</div>
                 <div className="card-value highlight-cyan">
                     {telemetry.inlierCount}
-                    <span className="card-unit"> / 50</span>
+                    <span className="card-unit"> / {telemetry.featureCount || 50}</span>
                 </div>
                 <div className="card-subtext">
-                    {telemetry.retentionRate.toFixed(1)}% retention rate ({telemetry.rejectedCount} rejected)
+                    {telemetry.retentionRate.toFixed(1)}% retention ({telemetry.rejectedCount} rejected)
                 </div>
             </div>
 
@@ -92,7 +98,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                     {(telemetry.confidence * 100).toFixed(1)}%
                 </div>
                 <div className="card-subtext">
-                    Quality: {telemetry.trackingQuality} &bull; MAD: &plusmn;{telemetry.madX.toFixed(2)} mm
+                    Quality: {telemetry.trackingQuality} &bull; MAD: &plusmn;{telemetry.madX.toFixed(2)} {dispUnit}
                 </div>
             </div>
 
@@ -103,20 +109,20 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({ telemetry }) => 
                     {telemetry.measurementStatus}
                 </div>
                 <div className="card-subtext">
-                    Physical bounds: 1280x720 frame limits
+                    Reason: {telemetry.validityReason || telemetry.measurementStatus}
                 </div>
             </div>
 
-            {/* 8. Scenario Response State Card */}
+            {/* 8. Operating / Scenario State Card */}
             <div className="telemetry-card scenario-card">
-                <div className="card-label">RESPONSE SCENARIO</div>
+                <div className="card-label">{isLive ? "OPERATING MODE" : "RESPONSE SCENARIO"}</div>
                 <div className="scenario-badge-wrapper">
                     <span className={`scenario-badge ${scenarioBadgeClass}`}>
-                        {telemetry.scenario}
+                        {isLive ? "● LIVE WEBCAM" : telemetry.scenario}
                     </span>
                 </div>
                 <div className="card-subtext">
-                    Simulated structural response state
+                    {isLive ? "Physical external video telemetry" : "Simulated structural response state"}
                 </div>
             </div>
         </div>

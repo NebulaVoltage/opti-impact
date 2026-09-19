@@ -18,7 +18,7 @@ export const FrequencyChart: React.FC<FrequencyChartProps> = ({ telemetry }) => 
         const history = historyRef.current;
         history.push({
             time: telemetry.timestamp,
-            freq: telemetry.dominantFrequency,
+            freq: telemetry.dominantFrequency ?? 0,
         });
 
         // Retain 15 seconds of frequency trend
@@ -130,7 +130,7 @@ export const FrequencyChart: React.FC<FrequencyChartProps> = ({ telemetry }) => 
                     MODAL FREQUENCY EVOLUTION [15s TREND]
                 </div>
                 <div className="freq-live-badge">
-                    {telemetry.dominantFrequency.toFixed(2)} Hz
+                    {telemetry.dominantFrequency !== null ? `${telemetry.dominantFrequency.toFixed(2)} Hz` : "0.00 Hz"}
                 </div>
             </div>
             <div className="canvas-wrapper">
